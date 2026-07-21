@@ -802,6 +802,7 @@ async def list_events(
     end_date: str = "",
     count: int = 20,
     account: str = "",
+    folder: str = "",
 ) -> str:
     """List upcoming calendar events from Outlook.
 
@@ -820,14 +821,21 @@ async def list_events(
         count: Maximum number of events to return. Default 20.
         account: Optional. Account display name (or substring) to target.
             Default: primary account. Use list_accounts to see available accounts.
+        folder: Optional. Calendar folder name or path (e.g. "Team-Kalender",
+            "Calendar/Team-Kalender"). Default: primary calendar.
 
     Returns:
         JSON array of event summary objects.
     """
-    def _list(outlook, namespace, start_date, end_date, count, account):
+    def _list(outlook, namespace, start_date, end_date, count, account, folder):
         count = min(max(1, count), 200)
         store = _require_store(namespace, account)
-        calendar = store.GetDefaultFolder(OL_FOLDER_CALENDAR)
+        if folder:
+            calendar = _resolve_folder(namespace, folder, store)
+            if not calendar:
+                return json.dumps({"error": f"Calendar folder '{folder}' not found"})
+        else:
+            calendar = store.GetDefaultFolder(OL_FOLDER_CALENDAR)
         items = calendar.Items
 
         # CRITICAL ORDER: Sort BEFORE IncludeRecurrences BEFORE Restrict
@@ -857,7 +865,7 @@ async def list_events(
         return json.dumps(results, indent=2, default=str)
 
     try:
-        return await bridge.call(_list, start_date, end_date, count, account)
+        return await bridge.call(_list, start_date, end_date, count, account, folder)
     except Exception as e:
         return f"Error listing events: {format_com_error(e)}"
 
@@ -910,6 +918,7 @@ async def create_event(
     all_day: bool = False,
     reminder_minutes: int = 15,
     account: str = "",
+    folder: str = "",
 ) -> str:
     """Create a personal calendar appointment (no attendees).
 
@@ -932,17 +941,31 @@ async def create_event(
             Default 15. Set to 0 to disable reminder.
         account: Optional. Account display name (or substring) to create
             the event in. Default: primary account.
+        folder: Optional. Calendar folder name or path (e.g. "Team-Kalender",
+            "Calendar/Team-Kalender"). Default: primary calendar.
 
     Returns:
         Confirmation with event subject and entry_id, or an error.
     """
     def _create(outlook, namespace, subject, start, end, location, body,
-                all_day, reminder_minutes, account):
+                all_day, reminder_minutes, account, folder):
         appt = outlook.CreateItem(OL_APPOINTMENT_ITEM)
         # Move to correct store's calendar if account specified
         if account:
             store = _require_store(namespace, account)
-            cal = store.GetDefaultFolder(OL_FOLDER_CALENDAR)
+            if folder:
+                cal = _resolve_folder(namespace, folder, store)
+                if not cal:
+                    return json.dumps({"error": f"Calendar folder '{folder}' not found"})
+            else:
+                cal = store.GetDefaultFolder(OL_FOLDER_CALENDAR)
+            appt.Move(cal)
+            appt = namespace.GetItemFromID(appt.EntryID)
+        elif folder:
+            store = namespace.DefaultStore
+            cal = _resolve_folder(namespace, folder, store)
+            if not cal:
+                return json.dumps({"error": f"Calendar folder '{folder}' not found"})
             appt.Move(cal)
             appt = namespace.GetItemFromID(appt.EntryID)
         appt.Subject = subject
@@ -970,7 +993,7 @@ async def create_event(
     try:
         return await bridge.call(
             _create, subject, start, end, location, body, all_day,
-            reminder_minutes, account,
+            reminder_minutes, account, folder,
         )
     except Exception as e:
         return f"Error creating event: {format_com_error(e)}"
@@ -1244,6 +1267,7 @@ async def search_events(
     end_date: str = "",
     count: int = 10,
     account: str = "",
+    folder: str = "",
 ) -> str:
     """Search for calendar events by keyword.
 
@@ -1259,14 +1283,21 @@ async def search_events(
         count: Maximum results to return. Default 10.
         account: Optional. Account display name (or substring) to target.
             Default: primary account. Use list_accounts to see available accounts.
+        folder: Optional. Calendar folder name or path (e.g. "Team-Kalender",
+            "Calendar/Team-Kalender"). Default: primary calendar.
 
     Returns:
         JSON array of matching event summaries.
     """
-    def _search(outlook, namespace, query, start_date, end_date, count, account):
+    def _search(outlook, namespace, query, start_date, end_date, count, account, folder):
         count = min(max(1, count), 200)
         store = _require_store(namespace, account)
-        calendar = store.GetDefaultFolder(OL_FOLDER_CALENDAR)
+        if folder:
+            calendar = _resolve_folder(namespace, folder, store)
+            if not calendar:
+                return json.dumps({"error": f"Calendar folder '{folder}' not found"})
+        else:
+            calendar = store.GetDefaultFolder(OL_FOLDER_CALENDAR)
         items = calendar.Items
         items.Sort("[Start]")
         items.IncludeRecurrences = True
@@ -1294,7 +1325,7 @@ async def search_events(
         return json.dumps(results, indent=2, default=str)
 
     try:
-        return await bridge.call(_search, query, start_date, end_date, count, account)
+        return await bridge.call(_search, query, start_date, end_date, count, account, folder)
     except Exception as e:
         return f"Error searching events: {format_com_error(e)}"
 
