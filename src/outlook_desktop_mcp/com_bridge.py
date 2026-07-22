@@ -45,7 +45,10 @@ class OutlookBridge:
 
     def _com_thread_main(self):
         """Main loop for the COM thread."""
+        # ty: ignore[unresolved-import]
         import pythoncom
+
+        # ty: ignore[unresolved-import]
         import win32com.client
 
         pythoncom.CoInitialize()
