@@ -1013,15 +1013,13 @@ async def create_event(
                     return json.dumps({"error": f"Calendar folder '{folder}' not found"})
             else:
                 cal = store.GetDefaultFolder(OL_FOLDER_CALENDAR)
-            appt.Move(cal)
-            appt = cast(Appointment, namespace.GetItemFromID(appt.EntryID))
+            appt = cast(Appointment, appt.Move(cal))
         elif folder:
             store = namespace.DefaultStore
             cal = _resolve_folder(namespace, folder, store)
             if not cal:
                 return json.dumps({"error": f"Calendar folder '{folder}' not found"})
-            appt.Move(cal)
-            appt = cast(Appointment, namespace.GetItemFromID(appt.EntryID))
+            appt = cast(Appointment, appt.Move(cal))
         appt.Subject = subject
         appt.Start = start
         appt.End = end
@@ -1504,8 +1502,7 @@ async def create_task(
         if account:
             store = _require_store(namespace, account)
             tasks_folder = store.GetDefaultFolder(OL_FOLDER_TASKS)
-            task.Move(tasks_folder)
-            task = cast(TaskItem, namespace.GetItemFromID(task.EntryID))
+            task = cast(TaskItem, task.Move(tasks_folder))
         task.Subject = subject
         if body:
             task.Body = body
