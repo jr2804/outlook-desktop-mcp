@@ -1028,7 +1028,7 @@ async def create_event(
         if body:
             appt.Body = body
         appt.AllDayEvent = all_day
-        if reminder_minutes > 0:
+        if not all_day and reminder_minutes > 0:
             appt.ReminderSet = True
             appt.ReminderMinutesBeforeStart = reminder_minutes
         else:
