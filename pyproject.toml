@@ -38,3 +38,16 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/outlook_desktop_mcp"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
+
+[tool.pytest.ini_options]
+# The MCP server's tools are async def; auto-mode lets async tests run
+# without per-test markers. COM integration tests (*_com_test.py) still
+# require a live Windows/macOS Outlook and are skipped/no-op on Linux.
+asyncio_mode = "auto"
+testpaths = ["tests"]

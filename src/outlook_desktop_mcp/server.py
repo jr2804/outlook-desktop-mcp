@@ -12,12 +12,32 @@ import json
 import logging
 import re
 
+from typing import Any, cast
+
 from mcp.server.fastmcp import FastMCP
 
 from outlook_desktop_mcp.com_bridge import OutlookBridge
 from datetime import datetime, timedelta
 
 import os
+
+from outlook_desktop_mcp._types import (
+    AnyCOM,
+    Account,
+    Accounts,
+    Appointment,
+    Folder,
+    Folders,
+    GenericItem,
+    MailItem,
+    Namespace,
+    Outlook as OutlookCOM,
+    Recipient,
+    Recipients,
+    Store,
+    Stores,
+    TaskItem,
+)
 
 from outlook_desktop_mcp.tools._folder_constants import (
     FOLDER_NAME_TO_ENUM,
@@ -74,10 +94,33 @@ _OL_CLASS_APPOINTMENT = 26
 _OL_CLASS_TASK = 48
 
 
-def _check_item_class(item, expected_class: int, label: str) -> str | None:
+def _check_item_class(
+    item: Appointment | TaskItem | MailItem | GenericItem,
+    expected_class: int,
+    label: str,
+) -> str | None:
     """Return an error string if item is the wrong type, else None."""
     if item.Class != expected_class:
         return f"Error: Entry ID does not refer to a {label}."
+    return None
+
+
+def _validate_subject(subject: str | None, *, allow_skip: bool = False) -> str | None:
+    """Return an error JSON string if subject is blank, else None.
+
+    Args:
+        subject: The subject value to check.
+        allow_skip: If True, an empty string means "do not change" (for update_*
+            tools) and is accepted; whitespace-only is still rejected.
+    """
+    if subject is None:
+        return json.dumps({"error": "subject is required and must not be blank"})
+    if not subject and allow_skip:
+        return None
+    if not subject or not subject.strip():
+        msg = "subject is required and must not be blank" if not allow_skip \
+            else "subject, if provided, must not be blank"
+        return json.dumps({"error": msg})
     return None
 
 
@@ -113,7 +156,7 @@ bridge = OutlookBridge()
 
 # --- Helper: resolve store by account name ---
 
-def _resolve_store(namespace, account: str = ""):
+def _resolve_store(namespace: Namespace, account: str = "") -> Store | None:
     """Resolve an account name to an Outlook Store object.
 
     If account is empty, returns DefaultStore.
@@ -131,7 +174,7 @@ def _resolve_store(namespace, account: str = ""):
     return None
 
 
-def _require_store(namespace, account: str = ""):
+def _require_store(namespace: Namespace, account: str = "") -> Store:
     """Resolve store, raising ValueError if not found."""
     store = _resolve_store(namespace, account)
     if store is None:
@@ -141,11 +184,11 @@ def _require_store(namespace, account: str = ""):
 
 # --- Helper: resolve folder by name ---
 
-def _walk_folders(parent, name_lower: str):
+def _walk_folders(parent: Folder, name_lower: str) -> Folder | None:
     """Recursively search subfolders of parent for a folder matching name_lower."""
     for i in range(parent.Folders.Count):
         try:
-            f = parent.Folders.Item(i + 1)
+            f: Folder = parent.Folders.Item(i + 1)
             if f.Name.lower() == name_lower:
                 return f
             found = _walk_folders(f, name_lower)
@@ -156,7 +199,7 @@ def _walk_folders(parent, name_lower: str):
     return None
 
 
-def _resolve_folder(namespace, folder_name: str, store=None):
+def _resolve_folder(namespace: Namespace, folder_name: str, store: Store | None = None) -> Folder | None:
     """Resolve a folder name to an Outlook MAPIFolder object.
 
     Resolution order:
@@ -171,15 +214,15 @@ def _resolve_folder(namespace, folder_name: str, store=None):
     # Slash-delimited path: traverse segment by segment
     if "/" in folder_name:
         parts = [p.strip() for p in folder_name.split("/")]
-        current = _resolve_folder(namespace, parts[0], store)
+        current: Folder | None = _resolve_folder(namespace, parts[0], store)
         if current is None:
             return None
         for part in parts[1:]:
             part_lower = part.lower()
-            found = None
+            found: Folder | None = None
             for i in range(current.Folders.Count):
                 try:
-                    f = current.Folders.Item(i + 1)
+                    f: Folder = current.Folders.Item(i + 1)
                     if f.Name.lower() == part_lower:
                         found = f
                         break
@@ -225,7 +268,7 @@ async def list_accounts() -> str:
     Returns:
         JSON array of account objects.
     """
-    def _list(outlook, namespace):
+    def _list(outlook: OutlookCOM, namespace: Namespace) -> str:
         default_id = namespace.DefaultStore.StoreID
         results = []
         for i in range(namespace.Stores.Count):
@@ -278,9 +321,10 @@ async def send_email(
     Returns:
         A confirmation message with subject and recipients, or an error.
     """
-    def _send(outlook, namespace, to, subject, body, cc, bcc, html_body, account):
+    def _send(outlook: OutlookCOM, namespace: Namespace, to: str, subject: str, body: str,
+              cc: str, bcc: str, html_body: str, account: str) -> str:
         store = _require_store(namespace, account)
-        mail = outlook.CreateItem(OL_MAIL_ITEM)
+        mail: MailItem = outlook.CreateItem(OL_MAIL_ITEM)
         # Set the sending account
         for acc in outlook.Session.Accounts:
             if acc.DeliveryStore.StoreID == store.StoreID:
@@ -343,7 +387,8 @@ async def list_emails(
     Returns:
         JSON array of email summary objects.
     """
-    def _list(outlook, namespace, folder, count, unread_only, start_date, end_date, account):
+    def _list(outlook: OutlookCOM, namespace: Namespace, folder: str, count: int,
+              unread_only: bool, start_date: str, end_date: str, account: str) -> str:
         count = min(max(1, count), 200)
         store = _require_store(namespace, account)
         target = _resolve_folder(namespace, folder, store)
@@ -417,7 +462,8 @@ async def read_email(
         JSON object with full email details (entry_id, subject, sender,
         sender_name, received_time, unread, to, cc, body, attachment info).
     """
-    def _read(outlook, namespace, entry_id, subject_search, folder, account):
+    def _read(outlook: OutlookCOM, namespace: Namespace, entry_id: str,
+              subject_search: str, folder: str, account: str) -> str:
         if entry_id:
             item = namespace.GetItemFromID(entry_id)
             return json.dumps(format_email_full(item), indent=2, default=str)
@@ -467,7 +513,7 @@ async def mark_as_read(entry_id: str, account: str = "") -> str:
     Returns:
         Confirmation message with the email subject, or an error.
     """
-    def _mark(outlook, namespace, entry_id, account):
+    def _mark(outlook: OutlookCOM, namespace: Namespace, entry_id: str, account: str) -> str:
         if account:
             store = _require_store(namespace, account)
             item = namespace.GetItemFromID(entry_id, store.StoreID)
@@ -506,7 +552,7 @@ async def mark_as_unread(entry_id: str, account: str = "") -> str:
     Returns:
         Confirmation message with the email subject, or an error.
     """
-    def _mark(outlook, namespace, entry_id, account):
+    def _mark(outlook: OutlookCOM, namespace: Namespace, entry_id: str, account: str) -> str:
         if account:
             store = _require_store(namespace, account)
             item = namespace.GetItemFromID(entry_id, store.StoreID)
@@ -552,7 +598,8 @@ async def move_email(
     Returns:
         Confirmation with email subject and destination, or an error.
     """
-    def _move(outlook, namespace, entry_id, target_folder, account):
+    def _move(outlook: OutlookCOM, namespace: Namespace, entry_id: str,
+              target_folder: str, account: str) -> str:
         item = namespace.GetItemFromID(entry_id)
         if err := _check_item_class(item, _OL_CLASS_MAIL, "mail item"):
             return err
@@ -600,7 +647,8 @@ async def reply_email(
     Returns:
         Confirmation indicating the reply was sent, or an error.
     """
-    def _reply(outlook, namespace, entry_id, body, reply_all, account):
+    def _reply(outlook: OutlookCOM, namespace: Namespace, entry_id: str, body: str,
+               reply_all: bool, account: str) -> str:
         if account:
             store = _require_store(namespace, account)
             item = namespace.GetItemFromID(entry_id, store.StoreID)
@@ -651,7 +699,8 @@ async def list_folders(folder: str = "", max_depth: int = 3, account: str = "") 
         JSON array of folder objects with name, full_path, item_count,
         unread_count, and subfolders (if any).
     """
-    def _list(outlook, namespace, folder, max_depth, account):
+    def _list(outlook: OutlookCOM, namespace: Namespace, folder: str,
+              max_depth: int, account: str) -> str:
         max_depth = min(max(1, max_depth), 10)
         store = _require_store(namespace, account)
 
@@ -664,19 +713,19 @@ async def list_folders(folder: str = "", max_depth: int = 3, account: str = "") 
             start = store.GetRootFolder()
             base_path = ""
 
-        def walk(f, depth, path_prefix):
+        def walk(f: Folder, depth: int, path_prefix: str) -> dict[str, Any]:
             current_path = f"{path_prefix}/{f.Name}" if path_prefix else f.Name
-            result = {
+            result: dict[str, Any] = {
                 "name": f.Name,
                 "full_path": current_path,
                 "item_count": f.Items.Count,
                 "unread_count": f.UnReadItemCount,
             }
             if depth < max_depth:
-                children = []
+                children: list[dict[str, Any]] = []
                 for i in range(f.Folders.Count):
                     try:
-                        child = f.Folders.Item(i + 1)
+                        child: Folder = f.Folders.Item(i + 1)
                         children.append(walk(child, depth + 1, current_path))
                     except Exception:
                         continue
@@ -684,10 +733,10 @@ async def list_folders(folder: str = "", max_depth: int = 3, account: str = "") 
                     result["subfolders"] = children
             return result
 
-        folders = []
+        folders: list[dict[str, Any]] = []
         for i in range(start.Folders.Count):
             try:
-                child = start.Folders.Item(i + 1)
+                child: Folder = start.Folders.Item(i + 1)
                 folders.append(walk(child, 1, base_path))
             except Exception:
                 continue
@@ -734,7 +783,8 @@ async def search_emails(
     Returns:
         JSON array of matching email summaries, or an error.
     """
-    def _search(outlook, namespace, query, folder, count, start_date, end_date, account):
+    def _search(outlook: OutlookCOM, namespace: Namespace, query: str, folder: str,
+                count: int, start_date: str, end_date: str, account: str) -> str:
         count = min(max(1, count), 200)
         store = _require_store(namespace, account)
         target = _resolve_folder(namespace, folder, store)
@@ -827,7 +877,8 @@ async def list_events(
     Returns:
         JSON array of event summary objects.
     """
-    def _list(outlook, namespace, start_date, end_date, count, account, folder):
+    def _list(outlook: OutlookCOM, namespace: Namespace, start_date: str, end_date: str,
+              count: int, account: str, folder: str) -> str:
         count = min(max(1, count), 200)
         store = _require_store(namespace, account)
         if folder:
@@ -890,7 +941,7 @@ async def get_event(entry_id: str, account: str = "") -> str:
     Returns:
         JSON object with full event details.
     """
-    def _get(outlook, namespace, entry_id, account):
+    def _get(outlook: OutlookCOM, namespace: Namespace, entry_id: str, account: str) -> str:
         if account:
             store = _require_store(namespace, account)
             item = namespace.GetItemFromID(entry_id, store.StoreID)
@@ -947,9 +998,12 @@ async def create_event(
     Returns:
         Confirmation with event subject and entry_id, or an error.
     """
-    def _create(outlook, namespace, subject, start, end, location, body,
-                all_day, reminder_minutes, account, folder):
-        appt = outlook.CreateItem(OL_APPOINTMENT_ITEM)
+    if err := _validate_subject(subject):
+        return err
+    def _create(outlook: OutlookCOM, namespace: Namespace, subject: str, start: str, end: str,
+                location: str, body: str, all_day: bool, reminder_minutes: int,
+                account: str, folder: str) -> str:
+        appt: Appointment = outlook.CreateItem(OL_APPOINTMENT_ITEM)
         # Move to correct store's calendar if account specified
         if account:
             store = _require_store(namespace, account)
@@ -960,14 +1014,14 @@ async def create_event(
             else:
                 cal = store.GetDefaultFolder(OL_FOLDER_CALENDAR)
             appt.Move(cal)
-            appt = namespace.GetItemFromID(appt.EntryID)
+            appt = cast(Appointment, namespace.GetItemFromID(appt.EntryID))
         elif folder:
             store = namespace.DefaultStore
             cal = _resolve_folder(namespace, folder, store)
             if not cal:
                 return json.dumps({"error": f"Calendar folder '{folder}' not found"})
             appt.Move(cal)
-            appt = namespace.GetItemFromID(appt.EntryID)
+            appt = cast(Appointment, namespace.GetItemFromID(appt.EntryID))
         appt.Subject = subject
         appt.Start = start
         appt.End = end
@@ -1037,9 +1091,12 @@ async def create_meeting(
     Returns:
         Confirmation that the meeting was created and invitations sent.
     """
-    def _create(outlook, namespace, subject, start, end, required_attendees,
-                location, body, optional_attendees, account):
-        appt = outlook.CreateItem(OL_APPOINTMENT_ITEM)
+    if err := _validate_subject(subject):
+        return err
+    def _create(outlook: OutlookCOM, namespace: Namespace, subject: str, start: str, end: str,
+                required_attendees: str, location: str, body: str,
+                optional_attendees: str, account: str) -> str:
+        appt: Appointment = outlook.CreateItem(OL_APPOINTMENT_ITEM)
         # Set sending account
         if account:
             store = _require_store(namespace, account)
@@ -1118,12 +1175,15 @@ async def update_event(
     Returns:
         Confirmation with updated event details, or an error.
     """
-    def _update(outlook, namespace, entry_id, subject, start, end, location, body, account):
+    if err := _validate_subject(subject, allow_skip=True):
+        return err
+    def _update(outlook: OutlookCOM, namespace: Namespace, entry_id: str, subject: str,
+                start: str, end: str, location: str, body: str, account: str) -> str:
         if account:
             store = _require_store(namespace, account)
-            item = namespace.GetItemFromID(entry_id, store.StoreID)
+            item = cast(Appointment, namespace.GetItemFromID(entry_id, store.StoreID))
         else:
-            item = namespace.GetItemFromID(entry_id)
+            item = cast(Appointment, namespace.GetItemFromID(entry_id))
         if err := _check_item_class(item, _OL_CLASS_APPOINTMENT, "appointment/meeting item"):
             return err
         if subject:
@@ -1175,7 +1235,7 @@ async def delete_event(entry_id: str, account: str = "") -> str:
     Returns:
         Confirmation with the event subject, or an error.
     """
-    def _delete(outlook, namespace, entry_id, account):
+    def _delete(outlook: OutlookCOM, namespace: Namespace, entry_id: str, account: str) -> str:
         if account:
             store = _require_store(namespace, account)
             item = namespace.GetItemFromID(entry_id, store.StoreID)
@@ -1228,7 +1288,8 @@ async def respond_to_meeting(
     Returns:
         Confirmation of your response, or an error.
     """
-    def _respond(outlook, namespace, entry_id, response, account):
+    def _respond(outlook: OutlookCOM, namespace: Namespace, entry_id: str,
+                 response: str, account: str) -> str:
         response_map = {
             "accept": OL_RESPONSE_ACCEPTED,
             "decline": OL_RESPONSE_DECLINED,
@@ -1289,7 +1350,8 @@ async def search_events(
     Returns:
         JSON array of matching event summaries.
     """
-    def _search(outlook, namespace, query, start_date, end_date, count, account, folder):
+    def _search(outlook: OutlookCOM, namespace: Namespace, query: str, start_date: str,
+                end_date: str, count: int, account: str, folder: str) -> str:
         count = min(max(1, count), 200)
         store = _require_store(namespace, account)
         if folder:
@@ -1356,7 +1418,8 @@ async def list_tasks(
     Returns:
         JSON array of task summary objects.
     """
-    def _list(outlook, namespace, include_completed, count, account):
+    def _list(outlook: OutlookCOM, namespace: Namespace, include_completed: bool,
+              count: int, account: str) -> str:
         count = min(max(1, count), 200)
         store = _require_store(namespace, account)
         folder = store.GetDefaultFolder(OL_FOLDER_TASKS)
@@ -1393,7 +1456,7 @@ async def get_task(entry_id: str, account: str = "") -> str:
     Returns:
         JSON object with full task details including body.
     """
-    def _get(outlook, namespace, entry_id, account):
+    def _get(outlook: OutlookCOM, namespace: Namespace, entry_id: str, account: str) -> str:
         if account:
             store = _require_store(namespace, account)
             item = namespace.GetItemFromID(entry_id, store.StoreID)
@@ -1431,15 +1494,18 @@ async def create_task(
     Returns:
         Confirmation with task subject and entry_id.
     """
-    def _create(outlook, namespace, subject, body, due_date, importance,
-                reminder_minutes, account):
-        task = outlook.CreateItem(OL_TASK_ITEM)
+    if err := _validate_subject(subject):
+        return err
+    def _create(outlook: OutlookCOM, namespace: Namespace, subject: str, body: str,
+                due_date: str, importance: str, reminder_minutes: int,
+                account: str) -> str:
+        task: TaskItem = outlook.CreateItem(OL_TASK_ITEM)
         # Move to correct store's tasks folder if account specified
         if account:
             store = _require_store(namespace, account)
             tasks_folder = store.GetDefaultFolder(OL_FOLDER_TASKS)
             task.Move(tasks_folder)
-            task = namespace.GetItemFromID(task.EntryID)
+            task = cast(TaskItem, namespace.GetItemFromID(task.EntryID))
         task.Subject = subject
         if body:
             task.Body = body
@@ -1483,12 +1549,12 @@ async def complete_task(entry_id: str, account: str = "") -> str:
     Returns:
         Confirmation with the task subject.
     """
-    def _complete(outlook, namespace, entry_id, account):
+    def _complete(outlook: OutlookCOM, namespace: Namespace, entry_id: str, account: str) -> str:
         if account:
             store = _require_store(namespace, account)
-            item = namespace.GetItemFromID(entry_id, store.StoreID)
+            item = cast(TaskItem, namespace.GetItemFromID(entry_id, store.StoreID))
         else:
-            item = namespace.GetItemFromID(entry_id)
+            item = cast(TaskItem, namespace.GetItemFromID(entry_id))
         if err := _check_item_class(item, _OL_CLASS_TASK, "task item"):
             return err
         item.Status = OL_TASK_COMPLETE
@@ -1514,7 +1580,7 @@ async def delete_task(entry_id: str, account: str = "") -> str:
     Returns:
         Confirmation with the task subject.
     """
-    def _delete(outlook, namespace, entry_id, account):
+    def _delete(outlook: OutlookCOM, namespace: Namespace, entry_id: str, account: str) -> str:
         if account:
             store = _require_store(namespace, account)
             item = namespace.GetItemFromID(entry_id, store.StoreID)
@@ -1548,7 +1614,7 @@ async def list_attachments(entry_id: str, account: str = "") -> str:
     Returns:
         JSON array of attachment objects with index, filename, and size.
     """
-    def _list(outlook, namespace, entry_id, account):
+    def _list(outlook: OutlookCOM, namespace: Namespace, entry_id: str, account: str) -> str:
         if account:
             store = _require_store(namespace, account)
             item = namespace.GetItemFromID(entry_id, store.StoreID)
@@ -1593,7 +1659,8 @@ async def save_attachment(
     Returns:
         The full file path where the attachment was saved, or an error.
     """
-    def _save(outlook, namespace, entry_id, attachment_index, save_directory, account):
+    def _save(outlook: OutlookCOM, namespace: Namespace, entry_id: str,
+              attachment_index: int, save_directory: str, account: str) -> str:
         if account:
             store = _require_store(namespace, account)
             item = namespace.GetItemFromID(entry_id, store.StoreID)
@@ -1655,7 +1722,7 @@ async def list_categories(account: str = "") -> str:
     Returns:
         JSON array of category objects with name and color index.
     """
-    def _list(outlook, namespace, account):
+    def _list(outlook: OutlookCOM, namespace: Namespace, account: str) -> str:
         # Categories are profile-wide, not per-store, but we accept the param for consistency
         results = []
         for i in range(namespace.Categories.Count):
@@ -1691,7 +1758,8 @@ async def set_category(
     Returns:
         Confirmation with the item subject and applied categories.
     """
-    def _set(outlook, namespace, entry_id, categories, account):
+    def _set(outlook: OutlookCOM, namespace: Namespace, entry_id: str,
+             categories: str, account: str) -> str:
         if account:
             store = _require_store(namespace, account)
             item = namespace.GetItemFromID(entry_id, store.StoreID)
@@ -1727,7 +1795,7 @@ async def list_rules(account: str = "") -> str:
     Returns:
         JSON array of rule objects with name, enabled status, and index.
     """
-    def _list(outlook, namespace, account):
+    def _list(outlook: OutlookCOM, namespace: Namespace, account: str) -> str:
         store = _require_store(namespace, account)
         rules = store.GetRules()
         results = []
@@ -1767,7 +1835,8 @@ async def toggle_rule(
     Returns:
         Confirmation with the rule name and new status.
     """
-    def _toggle(outlook, namespace, rule_name, enabled, account):
+    def _toggle(outlook: OutlookCOM, namespace: Namespace, rule_name: str, enabled: bool,
+                account: str) -> str:
         store = _require_store(namespace, account)
         rules = store.GetRules()
         for i in range(rules.Count):
@@ -1805,7 +1874,7 @@ async def get_out_of_office(account: str = "") -> str:
     Returns:
         JSON object with the OOF status.
     """
-    def _get(outlook, namespace, account):
+    def _get(outlook: OutlookCOM, namespace: Namespace, account: str) -> str:
         store = _require_store(namespace, account)
         try:
             prop_tag = "http://schemas.microsoft.com/mapi/proptag/0x661D000B"
@@ -1831,7 +1900,7 @@ async def get_out_of_office(account: str = "") -> str:
 # Entry point
 # =====================================================================
 
-def main():
+def main() -> None:
     logger.info("Starting Outlook Desktop MCP server...")
     bridge.start()
     logger.info("COM bridge ready. Starting MCP stdio transport...")

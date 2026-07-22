@@ -11,3 +11,4 @@ build/
 CLAUDE.md
 .claude/
 .vscode/
+uv.lock
