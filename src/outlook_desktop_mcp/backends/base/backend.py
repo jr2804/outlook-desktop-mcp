@@ -8,6 +8,7 @@ which converts them into ``Error`` JSON.
 The ``account`` parameter is part of every signature for parity. Backends that
 cannot select accounts (AppleScript) accept and ignore it.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -71,19 +72,35 @@ class Backend(ABC):
 
     @abstractmethod
     async def compose_email(
-        self, to: str, subject: str, body: str, cc: str, bcc: str,
-        html_body: str, account: str, send: bool,
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        cc: str,
+        bcc: str,
+        html_body: str,
+        account: str,
+        send: bool,
     ) -> SentResult | DraftSavedResult: ...
 
     @abstractmethod
     async def list_emails(
-        self, folder: str, count: int, unread_only: bool,
-        start_date: str, end_date: str, account: str,
+        self,
+        folder: str,
+        count: int,
+        unread_only: bool,
+        start_date: str,
+        end_date: str,
+        account: str,
     ) -> list[EmailSummary]: ...
 
     @abstractmethod
     async def read_email(
-        self, entry_id: str, subject_search: str, folder: str, account: str,
+        self,
+        entry_id: str,
+        subject_search: str,
+        folder: str,
+        account: str,
     ) -> EmailFull: ...
 
     @abstractmethod
@@ -97,7 +114,12 @@ class Backend(ABC):
 
     @abstractmethod
     async def reply_email(
-        self, entry_id: str, body: str, reply_all: bool, account: str, send: bool,
+        self,
+        entry_id: str,
+        body: str,
+        reply_all: bool,
+        account: str,
+        send: bool,
     ) -> ReplySentResult | ReplyDraftSavedResult: ...
 
     @abstractmethod
@@ -105,15 +127,25 @@ class Backend(ABC):
 
     @abstractmethod
     async def search_emails(
-        self, query: str, folder: str, count: int,
-        start_date: str, end_date: str, account: str,
+        self,
+        query: str,
+        folder: str,
+        count: int,
+        start_date: str,
+        end_date: str,
+        account: str,
     ) -> list[EmailSummary]: ...
 
     # --- calendar ---
 
     @abstractmethod
     async def list_events(
-        self, start_date: str, end_date: str, count: int, account: str, folder: str,
+        self,
+        start_date: str,
+        end_date: str,
+        count: int,
+        account: str,
+        folder: str,
     ) -> list[EventSummary]: ...
 
     @abstractmethod
@@ -121,20 +153,41 @@ class Backend(ABC):
 
     @abstractmethod
     async def create_event(
-        self, subject: str, start: str, end: str, location: str, body: str,
-        all_day: bool, reminder_minutes: int, account: str, folder: str,
+        self,
+        subject: str,
+        start: str,
+        end: str,
+        location: str,
+        body: str,
+        all_day: bool,
+        reminder_minutes: int,
+        account: str,
+        folder: str,
     ) -> EventCreatedResult: ...
 
     @abstractmethod
     async def create_meeting(
-        self, subject: str, start: str, end: str, required_attendees: str,
-        location: str, body: str, optional_attendees: str, account: str,
+        self,
+        subject: str,
+        start: str,
+        end: str,
+        required_attendees: str,
+        location: str,
+        body: str,
+        optional_attendees: str,
+        account: str,
     ) -> MeetingSentResult: ...
 
     @abstractmethod
     async def update_event(
-        self, entry_id: str, subject: str, start: str, end: str,
-        location: str, body: str, account: str,
+        self,
+        entry_id: str,
+        subject: str,
+        start: str,
+        end: str,
+        location: str,
+        body: str,
+        account: str,
     ) -> EventUpdatedResult: ...
 
     @abstractmethod
@@ -142,15 +195,23 @@ class Backend(ABC):
 
     @abstractmethod
     async def search_events(
-        self, query: str, start_date: str, end_date: str, count: int,
-        account: str, folder: str,
+        self,
+        query: str,
+        start_date: str,
+        end_date: str,
+        count: int,
+        account: str,
+        folder: str,
     ) -> list[EventSummary]: ...
 
     # --- tasks ---
 
     @abstractmethod
     async def list_tasks(
-        self, include_completed: bool, count: int, account: str,
+        self,
+        include_completed: bool,
+        count: int,
+        account: str,
     ) -> list[TaskSummary]: ...
 
     @abstractmethod
@@ -158,8 +219,13 @@ class Backend(ABC):
 
     @abstractmethod
     async def create_task(
-        self, subject: str, body: str, due_date: str, importance: str,
-        reminder_minutes: int, account: str,
+        self,
+        subject: str,
+        body: str,
+        due_date: str,
+        importance: str,
+        reminder_minutes: int,
+        account: str,
     ) -> TaskCreatedResult: ...
 
     @abstractmethod
@@ -175,7 +241,11 @@ class Backend(ABC):
 
     @abstractmethod
     async def save_attachment(
-        self, entry_id: str, attachment_index: int, save_directory: str, account: str,
+        self,
+        entry_id: str,
+        attachment_index: int,
+        save_directory: str,
+        account: str,
     ) -> AttachmentSavedResult: ...
 
     # --- out of office ---

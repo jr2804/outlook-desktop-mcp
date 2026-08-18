@@ -5,6 +5,7 @@ Each call is stateless — no persistent COM-like objects.
 
 Every tool builds an AppleScript string and passes it to ``bridge.run()``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -37,10 +38,7 @@ class AppleScriptBridge(BridgeBase):
             logger.info("AppleScript bridge ready. Outlook version: %s", self._version)
             self._running = True
         except Exception as e:
-            raise RuntimeError(
-                f"Cannot connect to Microsoft Outlook via AppleScript. "
-                f"Is Outlook running? Error: {e}"
-            ) from e
+            raise RuntimeError(f"Cannot connect to Microsoft Outlook via AppleScript. Is Outlook running? Error: {e}") from e
 
     async def run(self, script: str, timeout: float = SCRIPT_TIMEOUT) -> str:
         """Execute an AppleScript and return stdout as a string.
@@ -48,15 +46,15 @@ class AppleScriptBridge(BridgeBase):
         Raises RuntimeError on non-zero exit or timeout.
         """
         proc = await asyncio.create_subprocess_exec(
-            "osascript", "-e", script,
+            "osascript",
+            "-e",
+            script,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout
-            )
-        except asyncio.TimeoutError:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except TimeoutError:
             proc.kill()
             await proc.communicate()
             raise RuntimeError(f"AppleScript timed out after {timeout}s")

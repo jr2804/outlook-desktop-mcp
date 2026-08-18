@@ -26,10 +26,10 @@ For one-off vars (e.g. `acc` for an account, `appt_obj` for a re-fetched appt)
 we use the generic pseudo-type alias `AnyCOM` (= Any) so a quick local rename
 isn't blocked by strict type checking.
 """
+
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable, Self
-
+from typing import Any, Protocol, Self, runtime_checkable
 
 # Convenience alias for COM objects we don't have a Protocol for.
 # Used sparingly — prefer declaring a Protocol when an attribute set is reused.
@@ -39,21 +39,23 @@ type AnyCOM = Any
 @runtime_checkable
 class Folder(Protocol):
     """A calendar/mail/task folder. Used as return type of folder resolution."""
+
     @property
     def Name(self) -> str: ...
     @property
-    def Folders(self) -> "Folders":  # ty: ignore[invalid-type-form]  -- see block comment on Stores
+    def Folders(self) -> Folders:  # ty: ignore[invalid-type-form]  -- see block comment on Stores
         ...
     @property
     def Items(self) -> Any: ...
     @property
     def UnReadItemCount(self) -> int: ...
-    def Item(self, index: Any) -> "GenericItem": ...
+    def Item(self, index: Any) -> GenericItem: ...
 
 
 @runtime_checkable
 class Folders(Protocol):
     """A collection of Folder objects (Parent.Folders)."""
+
     @property
     def Count(self) -> int: ...
     def Item(self, index: Any) -> Folder: ...
@@ -62,6 +64,7 @@ class Folders(Protocol):
 @runtime_checkable
 class Store(Protocol):
     """An Outlook message store (account)."""
+
     @property
     def StoreID(self) -> str: ...
     @property
@@ -77,6 +80,7 @@ class Store(Protocol):
 @runtime_checkable
 class Stores(Protocol):
     """A collection of Store objects (Namespace.Stores)."""
+
     @property
     def Count(self) -> int: ...
     def Item(self, index: Any) -> Store: ...
@@ -85,6 +89,7 @@ class Stores(Protocol):
 @runtime_checkable
 class Account(Protocol):
     """An Outlook account entry (used for sending-as)."""
+
     @property
     def DeliveryStore(self) -> Store: ...
 
@@ -99,7 +104,8 @@ class Accounts(Protocol):
 @runtime_checkable
 class Recipients(Protocol):
     """A collection of Recipient objects (appointment/mail Recipients)."""
-    def Add(self, address: str) -> "Recipient": ...
+
+    def Add(self, address: str) -> Recipient: ...
     def ResolveAll(self) -> None: ...
 
 
@@ -118,6 +124,7 @@ class GenericItem(Protocol):
     for an appointment), declare the local as a specific Protocol
     (``Appointment``, ``MailItem``, ``TaskItem``).
     """
+
     @property
     def Class(self) -> int: ...
     @property
@@ -160,6 +167,7 @@ class GenericItem(Protocol):
 @runtime_checkable
 class MailItem(Protocol):
     """An Outlook mail item (CreateItem(0))."""
+
     @property
     def Class(self) -> int: ...
     @property
@@ -204,6 +212,7 @@ class MailItem(Protocol):
 @runtime_checkable
 class Appointment(Protocol):
     """An Outlook calendar appointment (CreateItem(1))."""
+
     @property
     def Class(self) -> int: ...
     @property
@@ -245,7 +254,7 @@ class Appointment(Protocol):
     @MeetingStatus.setter
     def MeetingStatus(self, value: int) -> None: ...
     @property
-    def Recipients(self) -> "Recipients":  # ty: ignore[invalid-type-form]  -- Protocol self-ref; see note on Stores
+    def Recipients(self) -> Recipients:  # ty: ignore[invalid-type-form]  -- Protocol self-ref; see note on Stores
         ...
     def Send(self) -> None: ...
     def Move(self, folder: Folder) -> Self: ...
@@ -260,6 +269,7 @@ class Appointment(Protocol):
 @runtime_checkable
 class TaskItem(Protocol):
     """An Outlook task item (CreateItem(5))."""
+
     @property
     def Class(self) -> int: ...
     @property
@@ -306,8 +316,9 @@ class TaskItem(Protocol):
 @runtime_checkable
 class Namespace(Protocol):
     """The MAPI namespace (outlook.Session)."""
+
     @property
-    def Stores(self) -> "Stores":  # ty: ignore[invalid-type-form]  -- see note below
+    def Stores(self) -> Stores:  # ty: ignore[invalid-type-form]  -- see note below
         ...
     @property
     def DefaultStore(self) -> Store: ...
@@ -335,6 +346,7 @@ class Namespace(Protocol):
 @runtime_checkable
 class Outlook(Protocol):
     """The top-level Outlook application (COM Application object)."""
+
     @property
     def Session(self) -> Namespace: ...
     def CreateItem(self, item_type: int) -> Any: ...

@@ -3,6 +3,7 @@
 Centralised so ``sys.platform`` is the only place that switches on OS —
 every other consumer compares against :class:`Platform` values.
 """
+
 from __future__ import annotations
 
 import sys
@@ -22,7 +23,4 @@ def current_platform() -> Platform:
         return Platform.DARWIN
     if sys.platform.startswith("win"):
         return Platform.WINDOWS
-    raise RuntimeError(
-        f"Unsupported platform: {sys.platform!r}. "
-        "outlook-desktop-mcp only runs on Windows or macOS."
-    )
+    raise RuntimeError(f"Unsupported platform: {sys.platform!r}. outlook-desktop-mcp only runs on Windows or macOS.")

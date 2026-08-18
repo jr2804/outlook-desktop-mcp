@@ -1,4 +1,5 @@
 """Helpers for building and parsing AppleScript safely."""
+
 import re
 from datetime import datetime
 
@@ -39,11 +40,11 @@ def parse_date(text: str) -> str:
     text = text.replace(" at ", " ")
     # Try common formats
     for fmt in (
-        "%B %d, %Y %I:%M:%S %p",   # March 22, 2026 2:00:00 PM
-        "%d. %B %Y %H:%M:%S",       # 22. mars 2026 14:00:00 (Norwegian)
-        "%Y-%m-%d %H:%M:%S",        # 2026-03-22 14:00:00
-        "%d/%m/%Y %H:%M:%S",        # 22/03/2026 14:00:00
-        "%m/%d/%Y %H:%M:%S",        # 03/22/2026 14:00:00
+        "%B %d, %Y %I:%M:%S %p",  # March 22, 2026 2:00:00 PM
+        "%d. %B %Y %H:%M:%S",  # 22. mars 2026 14:00:00 (Norwegian)
+        "%Y-%m-%d %H:%M:%S",  # 2026-03-22 14:00:00
+        "%d/%m/%Y %H:%M:%S",  # 22/03/2026 14:00:00
+        "%m/%d/%Y %H:%M:%S",  # 03/22/2026 14:00:00
     ):
         try:
             dt = datetime.strptime(text, fmt)

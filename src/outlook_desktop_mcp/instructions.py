@@ -4,6 +4,7 @@ This text is shown to clients (e.g. Claude) when the MCP server is loaded.
 It must remain accurate and stable — when the tool list changes, update it
 here as well.
 """
+
 from __future__ import annotations
 
 from outlook_desktop_mcp.platform import Platform
@@ -44,10 +45,7 @@ _PLATFORM_LABELS = {
 
 _PREREQUISITES = {
     Platform.DARWIN: "Microsoft Outlook for Mac must be running.",
-    Platform.WINDOWS: (
-        "On Windows, classic OUTLOOK.EXE only "
-        "(the new/modern Outlook olk.exe is NOT supported)."
-    ),
+    Platform.WINDOWS: ("On Windows, classic OUTLOOK.EXE only (the new/modern Outlook olk.exe is NOT supported)."),
 }
 
 _WINDOWS_ONLY = """\

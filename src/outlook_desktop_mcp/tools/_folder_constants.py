@@ -50,17 +50,27 @@ OL_OPTIONAL = 2
 OL_RESOURCE = 3
 
 BUSY_STATUS_NAMES = {
-    0: "free", 1: "tentative", 2: "busy",
-    3: "out_of_office", 4: "working_elsewhere",
+    0: "free",
+    1: "tentative",
+    2: "busy",
+    3: "out_of_office",
+    4: "working_elsewhere",
 }
 
 MEETING_STATUS_NAMES = {
-    0: "appointment", 1: "meeting", 3: "received", 5: "canceled",
+    0: "appointment",
+    1: "meeting",
+    3: "received",
+    5: "canceled",
 }
 
 RESPONSE_NAMES = {
-    0: "none", 1: "organized", 2: "tentative",
-    3: "accepted", 4: "declined", 5: "not_responded",
+    0: "none",
+    1: "organized",
+    2: "tentative",
+    3: "accepted",
+    4: "declined",
+    5: "not_responded",
 }
 
 # OlItemType
@@ -74,8 +84,11 @@ OL_TASK_WAITING = 3
 OL_TASK_DEFERRED = 4
 
 TASK_STATUS_NAMES = {
-    0: "not_started", 1: "in_progress", 2: "complete",
-    3: "waiting", 4: "deferred",
+    0: "not_started",
+    1: "in_progress",
+    2: "complete",
+    3: "waiting",
+    4: "deferred",
 }
 
 # OlImportance

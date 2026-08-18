@@ -6,6 +6,7 @@ Re-exports for backwards-compatible imports::
 
 are still valid because this package re-exports them below.
 """
+
 from outlook_desktop_mcp.backends.base.backend import Backend, BackendError
 
 __all__ = ["Backend", "BackendError"]

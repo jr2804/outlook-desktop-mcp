@@ -11,8 +11,10 @@ Signature parity notes:
   collection without parent links, so a ``folder`` argument filters by the
   last path segment and ``max_depth`` beyond 1 cannot be honored.
 """
+
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import re
@@ -28,11 +30,8 @@ from outlook_desktop_mcp.backends.mac.applescript_helpers import (
 )
 from outlook_desktop_mcp.backends.mac.bridge import AppleScriptBridge
 from outlook_desktop_mcp.models import (
-    AccountInfo,
     AttachmentInfo,
     AttachmentSavedResult,
-    CategoriesSetResult,
-    CategoryInfo,
     DraftSavedResult,
     EmailFull,
     EmailSummary,
@@ -42,15 +41,11 @@ from outlook_desktop_mcp.models import (
     EventUpdatedResult,
     FolderInfo,
     ItemStatusResult,
-    MeetingResponseResult,
     MeetingSentResult,
     MovedResult,
     OofSetResult,
-    OofStatus,
     ReplyDraftSavedResult,
     ReplySentResult,
-    RuleInfo,
-    RuleToggledResult,
     SentResult,
     TaskCreatedResult,
     TaskFull,
@@ -62,32 +57,37 @@ logger = logging.getLogger("outlook_desktop_mcp.backends.mac.backend")
 _UI_MESSAGE_LIST_PATH = (
     'tell application "System Events"\n'
     '    tell process "Microsoft Outlook"\n'
-    '        tell window 1\n'
-    '            tell splitter group 1\n'
-    '                tell splitter group 1\n'
-    '                    tell splitter group 1\n'
-    '                        tell group 1\n'
-    '                            tell scroll area 1\n'
-    '                                tell table 1\n'
+    "        tell window 1\n"
+    "            tell splitter group 1\n"
+    "                tell splitter group 1\n"
+    "                    tell splitter group 1\n"
+    "                        tell group 1\n"
+    "                            tell scroll area 1\n"
+    "                                tell table 1\n"
 )
 
 _UI_MESSAGE_LIST_END = (
-    '                                end tell\n'
-    '                            end tell\n'
-    '                        end tell\n'
-    '                    end tell\n'
-    '                end tell\n'
-    '            end tell\n'
-    '        end tell\n'
-    '    end tell\n'
-    'end tell'
+    "                                end tell\n"
+    "                            end tell\n"
+    "                        end tell\n"
+    "                    end tell\n"
+    "                end tell\n"
+    "            end tell\n"
+    "        end tell\n"
+    "    end tell\n"
+    "end tell"
 )
 
 # Locale-dependent status tokens for UI scraping
 _UNREAD_TOKENS = {"Ulest", "Unread", "Non lu", "Nicht gelesen", "No leído", "未読", "未读"}
 _ATTACHMENT_TOKENS = {
-    "Har filer", "Has attachments", "Contient des fichiers", "Hat Anlagen",
-    "Tiene archivos adjuntos", "添付ファイルあり", "有附件",
+    "Har filer",
+    "Has attachments",
+    "Contient des fichiers",
+    "Hat Anlagen",
+    "Tiene archivos adjuntos",
+    "添付ファイルあり",
+    "有附件",
 }
 _SKIP_PREFIXES = ("Merket som", "Marked as", "Marqué comme", "Markiert als", "Marcado como", "A ")
 _CATEGORY_TOKENS = {"Kategorisert", "Categorized", "Catégorisé", "Kategorisiert", "Categorizado"}
@@ -118,28 +118,33 @@ class AppleScriptBackend(Backend):
         self.bridge = AppleScriptBridge()
 
     def start(self) -> None:
-        import asyncio
+        import asyncio  # noqa: PLC0415
 
         asyncio.run(self.bridge.start())
 
     def stop(self) -> None:
-        import asyncio
+        import asyncio  # noqa: PLC0415
 
         asyncio.run(self.bridge.stop())
 
     # --- email ---
 
     async def compose_email(
-        self, to: str, subject: str, body: str, cc: str, bcc: str,
-        html_body: str, account: str, send: bool,
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        cc: str,
+        bcc: str,
+        html_body: str,
+        account: str,
+        send: bool,
     ) -> SentResult | DraftSavedResult:
         to_lines = self._recipient_lines(to, "to recipient")
         cc_lines = self._recipient_lines(cc, "cc recipient") if cc else ""
         bcc_lines = self._recipient_lines(bcc, "bcc recipient") if bcc else ""
 
-        content_prop = (
-            f'html content:"{escape(html_body)}"' if html_body else f'content:"{escape(body)}"'
-        )
+        content_prop = f'html content:"{escape(html_body)}"' if html_body else f'content:"{escape(body)}"'
         action = "send newMsg" if send else 'save newMsg in folder "Drafts"'
 
         script = f'''tell application "Microsoft Outlook"
@@ -155,8 +160,13 @@ end tell'''
         return DraftSavedResult(subject=subject, to=to, entry_id=raw)
 
     async def list_emails(
-        self, folder: str, count: int, unread_only: bool,
-        start_date: str, end_date: str, account: str,
+        self,
+        folder: str,
+        count: int,
+        unread_only: bool,
+        start_date: str,
+        end_date: str,
+        account: str,
     ) -> list[EmailSummary]:
         folder_ref = resolve_folder_ref(folder)
         unread_filter = " whose is read is false" if unread_only else ""
@@ -166,10 +176,7 @@ end tell'''
             date_filter = f" whose time received >= {format_date(start)}"
             if end_date:
                 end = _parse_iso(end_date)
-                date_filter = (
-                    f" whose time received >= {format_date(start)} "
-                    f"and time received <= {format_date(end)}"
-                )
+                date_filter = f" whose time received >= {format_date(start)} and time received <= {format_date(end)}"
         elif end_date:
             end = _parse_iso(end_date)
             date_filter = f" whose time received <= {format_date(end)}"
@@ -216,15 +223,17 @@ end tell'''
         # AppleScript-visible mailbox. If nothing was found for the inbox,
         # read the visible message list via UI scripting.
         if not results and folder.lower().strip() == "inbox":
-            try:
+            with contextlib.suppress(Exception):
                 results = await self._ui_list_messages(count)
-            except Exception:
-                pass  # UI scraping failed — return empty list
 
         return results
 
     async def read_email(
-        self, entry_id: str, subject_search: str, folder: str, account: str,
+        self,
+        entry_id: str,
+        subject_search: str,
+        folder: str,
+        account: str,
     ) -> EmailFull:
         if entry_id:
             script = f'''tell application "Microsoft Outlook"
@@ -270,36 +279,41 @@ end tell'''
         )
 
     async def mark_as_read(self, entry_id: str, account: str) -> ItemStatusResult:
-        script = f'''tell application "Microsoft Outlook"
+        script = f"""tell application "Microsoft Outlook"
     set m to message id {entry_id}
     set is read of m to true
     return subject of m
-end tell'''
+end tell"""
         subject = await self.bridge.run(script)
         return ItemStatusResult(status="marked_read", subject=subject, entry_id=entry_id)
 
     async def mark_as_unread(self, entry_id: str, account: str) -> ItemStatusResult:
-        script = f'''tell application "Microsoft Outlook"
+        script = f"""tell application "Microsoft Outlook"
     set m to message id {entry_id}
     set is read of m to false
     return subject of m
-end tell'''
+end tell"""
         subject = await self.bridge.run(script)
         return ItemStatusResult(status="marked_unread", subject=subject, entry_id=entry_id)
 
     async def move_email(self, entry_id: str, target_folder: str, account: str) -> MovedResult:
         dest_ref = resolve_folder_ref(target_folder)
-        script = f'''tell application "Microsoft Outlook"
+        script = f"""tell application "Microsoft Outlook"
     set m to message id {entry_id}
     set msubject to subject of m
     move m to {dest_ref}
     return msubject
-end tell'''
+end tell"""
         subject = await self.bridge.run(script)
         return MovedResult(subject=subject, target_folder=target_folder)
 
     async def reply_email(
-        self, entry_id: str, body: str, reply_all: bool, account: str, send: bool,
+        self,
+        entry_id: str,
+        body: str,
+        reply_all: bool,
+        account: str,
+        send: bool,
     ) -> ReplySentResult | ReplyDraftSavedResult:
         reply_cmd = "reply all to" if reply_all else "reply to"
         action = "send replyMsg" if send else 'save replyMsg in folder "Drafts"'
@@ -331,19 +345,21 @@ end tell'''
 
         raw = await self.bridge.run(script)
         results: list[FolderInfo] = []
-        for record in (raw or "").split(RECORD_DELIM):
-            record = record.strip()
+        for raw_record in (raw or "").split(RECORD_DELIM):
+            record = raw_record.strip()
             if not record:
                 continue
             parts = record.split(DELIM)
             if len(parts) < 3:
                 continue
-            results.append(FolderInfo(
-                name=parts[0].strip(),
-                full_path=parts[0].strip(),
-                item_count=int(parts[1].strip()) if parts[1].strip().isdigit() else 0,
-                unread_count=int(parts[2].strip()) if parts[2].strip().isdigit() else 0,
-            ))
+            results.append(
+                FolderInfo(
+                    name=parts[0].strip(),
+                    full_path=parts[0].strip(),
+                    item_count=int(parts[1].strip()) if parts[1].strip().isdigit() else 0,
+                    unread_count=int(parts[2].strip()) if parts[2].strip().isdigit() else 0,
+                )
+            )
 
         # Best-effort drill-down: filter the flat collection by the last path
         # segment (the dictionary exposes no parent links for real traversal).
@@ -359,8 +375,13 @@ end tell'''
         return results
 
     async def search_emails(
-        self, query: str, folder: str, count: int,
-        start_date: str, end_date: str, account: str,
+        self,
+        query: str,
+        folder: str,
+        count: int,
+        start_date: str,
+        end_date: str,
+        account: str,
     ) -> list[EmailSummary]:
         folder_ref = resolve_folder_ref(folder)
         safe_query = escape(query)
@@ -402,9 +423,7 @@ end tell'''
         # subject conditions combined are unreliable in Outlook for Mac).
         if start_date or end_date:
             start = _parse_iso(start_date) if start_date else None
-            end = _parse_iso(end_date) if end_date else (
-                datetime.now() if start_date else None
-            )
+            end = _parse_iso(end_date) if end_date else (datetime.now() if start_date else None)
             filtered = []
             for r in results:
                 iso = self._to_iso(r.received_time)
@@ -424,7 +443,12 @@ end tell'''
     # --- calendar ---
 
     async def list_events(
-        self, start_date: str, end_date: str, count: int, account: str, folder: str,
+        self,
+        start_date: str,
+        end_date: str,
+        count: int,
+        account: str,
+        folder: str,
     ) -> list[EventSummary]:
         start = _parse_iso(start_date) if start_date else datetime.now()
         end = _parse_iso(end_date) if end_date else start + timedelta(days=7)
@@ -522,8 +546,16 @@ end tell'''
         )
 
     async def create_event(
-        self, subject: str, start: str, end: str, location: str, body: str,
-        all_day: bool, reminder_minutes: int, account: str, folder: str,
+        self,
+        subject: str,
+        start: str,
+        end: str,
+        location: str,
+        body: str,
+        all_day: bool,
+        reminder_minutes: int,
+        account: str,
+        folder: str,
     ) -> EventCreatedResult:
         start_dt = _parse_iso(start)
         end_dt = _parse_iso(end)
@@ -551,8 +583,15 @@ end tell'''
         )
 
     async def create_meeting(
-        self, subject: str, start: str, end: str, required_attendees: str,
-        location: str, body: str, optional_attendees: str, account: str,
+        self,
+        subject: str,
+        start: str,
+        end: str,
+        required_attendees: str,
+        location: str,
+        body: str,
+        optional_attendees: str,
+        account: str,
     ) -> MeetingSentResult:
         start_dt = _parse_iso(start)
         end_dt = _parse_iso(end)
@@ -564,27 +603,21 @@ end tell'''
             props += f', content:"{escape(body)}"'
 
         attendee_lines = ""
-        for addr in required_attendees.split(";"):
-            addr = addr.strip()
+        for raw_addr in required_attendees.split(";"):
+            addr = raw_addr.strip()
             if addr:
-                attendee_lines += (
-                    f'make new required attendee at newEvt with properties '
-                    f'{{email address:{{address:"{escape(addr)}"}}}}\n'
-                )
+                attendee_lines += f'make new required attendee at newEvt with properties {{email address:{{address:"{escape(addr)}"}}}}\n'
         if optional_attendees:
-            for addr in optional_attendees.split(";"):
-                addr = addr.strip()
+            for raw_addr in optional_attendees.split(";"):
+                addr = raw_addr.strip()
                 if addr:
-                    attendee_lines += (
-                        f'make new optional attendee at newEvt with properties '
-                        f'{{email address:{{address:"{escape(addr)}"}}}}\n'
-                    )
+                    attendee_lines += f'make new optional attendee at newEvt with properties {{email address:{{address:"{escape(addr)}"}}}}\n'
 
-        script = f'''tell application "Microsoft Outlook"
+        script = f"""tell application "Microsoft Outlook"
     set newEvt to make new calendar event with properties {{{props}}}
     {attendee_lines}
     return (id of newEvt as text)
-end tell'''
+end tell"""
 
         await self.bridge.run(script)
         return MeetingSentResult(
@@ -594,16 +627,22 @@ end tell'''
         )
 
     async def update_event(
-        self, entry_id: str, subject: str, start: str, end: str,
-        location: str, body: str, account: str,
+        self,
+        entry_id: str,
+        subject: str,
+        start: str,
+        end: str,
+        location: str,
+        body: str,
+        account: str,
     ) -> EventUpdatedResult:
         set_lines = ""
         if subject:
             set_lines += f'set subject of e to "{escape(subject)}"\n'
         if start:
-            set_lines += f'set start time of e to {format_date(_parse_iso(start))}\n'
+            set_lines += f"set start time of e to {format_date(_parse_iso(start))}\n"
         if end:
-            set_lines += f'set end time of e to {format_date(_parse_iso(end))}\n'
+            set_lines += f"set end time of e to {format_date(_parse_iso(end))}\n"
         if location:
             set_lines += f'set location of e to "{escape(location)}"\n'
         if body:
@@ -629,18 +668,23 @@ end tell'''
         )
 
     async def delete_event(self, entry_id: str, account: str) -> ItemStatusResult:
-        script = f'''tell application "Microsoft Outlook"
+        script = f"""tell application "Microsoft Outlook"
     set e to calendar event id {entry_id}
     set esubject to subject of e
     delete e
     return esubject
-end tell'''
+end tell"""
         subject = await self.bridge.run(script)
         return ItemStatusResult(status="deleted", subject=subject, entry_id=entry_id)
 
     async def search_events(
-        self, query: str, start_date: str, end_date: str, count: int,
-        account: str, folder: str,
+        self,
+        query: str,
+        start_date: str,
+        end_date: str,
+        count: int,
+        account: str,
+        folder: str,
     ) -> list[EventSummary]:
         safe_query = escape(query)
 
@@ -676,7 +720,10 @@ end tell'''
     # --- tasks ---
 
     async def list_tasks(
-        self, include_completed: bool, count: int, account: str,
+        self,
+        include_completed: bool,
+        count: int,
+        account: str,
     ) -> list[TaskSummary]:
         completed_filter = "" if include_completed else " whose todo flag is not completed"
 
@@ -703,20 +750,22 @@ end tell'''
 
         raw = await self.bridge.run(script)
         results: list[TaskSummary] = []
-        for record in (raw or "").split(RECORD_DELIM):
-            record = record.strip()
+        for raw_record in (raw or "").split(RECORD_DELIM):
+            record = raw_record.strip()
             if not record:
                 continue
             parts = record.split(DELIM)
             if len(parts) < 5:
                 continue
-            results.append(TaskSummary(
-                entry_id=parts[0].strip(),
-                subject=parts[1].strip() or "(no subject)",
-                due_date=_clean(parts[2]) or None,
-                complete=parts[3].strip() == "completed",
-                priority=parts[4].strip(),
-            ))
+            results.append(
+                TaskSummary(
+                    entry_id=parts[0].strip(),
+                    subject=parts[1].strip() or "(no subject)",
+                    due_date=_clean(parts[2]) or None,
+                    complete=parts[3].strip() == "completed",
+                    priority=parts[4].strip(),
+                )
+            )
         return results
 
     async def get_task(self, entry_id: str, account: str) -> TaskFull:
@@ -757,15 +806,20 @@ end tell'''
         )
 
     async def create_task(
-        self, subject: str, body: str, due_date: str, importance: str,
-        reminder_minutes: int, account: str,
+        self,
+        subject: str,
+        body: str,
+        due_date: str,
+        importance: str,
+        reminder_minutes: int,
+        account: str,
     ) -> TaskCreatedResult:
         imp_map = {"low": "priority low", "normal": "priority normal", "high": "priority high"}
         imp_val = imp_map.get(importance.lower(), "priority normal")
 
         props = f'name:"{escape(subject)}", priority:{imp_val}'
         if due_date:
-            props += f', due date:{format_date(_parse_iso(due_date))}'
+            props += f", due date:{format_date(_parse_iso(due_date))}"
         if body:
             props += f', content:"{escape(body)}"'
 
@@ -783,21 +837,21 @@ end tell'''
         )
 
     async def complete_task(self, entry_id: str, account: str) -> ItemStatusResult:
-        script = f'''tell application "Microsoft Outlook"
+        script = f"""tell application "Microsoft Outlook"
     set t to task id {entry_id}
     set todo flag of t to completed
     return name of t
-end tell'''
+end tell"""
         name = await self.bridge.run(script)
         return ItemStatusResult(status="completed", subject=name, entry_id=entry_id)
 
     async def delete_task(self, entry_id: str, account: str) -> ItemStatusResult:
-        script = f'''tell application "Microsoft Outlook"
+        script = f"""tell application "Microsoft Outlook"
     set t to task id {entry_id}
     set tname to name of t
     delete t
     return tname
-end tell'''
+end tell"""
         name = await self.bridge.run(script)
         return ItemStatusResult(status="deleted", subject=name, entry_id=entry_id)
 
@@ -820,22 +874,28 @@ end tell'''
 
         raw = await self.bridge.run(script)
         results: list[AttachmentInfo] = []
-        for record in (raw or "").split(RECORD_DELIM):
-            record = record.strip()
+        for raw_record in (raw or "").split(RECORD_DELIM):
+            record = raw_record.strip()
             if not record:
                 continue
             parts = record.split(DELIM)
             if len(parts) < 3:
                 continue
-            results.append(AttachmentInfo(
-                index=int(parts[0].strip()) if parts[0].strip().isdigit() else 0,
-                filename=parts[1].strip(),
-                size=int(parts[2].strip()) if parts[2].strip().isdigit() else 0,
-            ))
+            results.append(
+                AttachmentInfo(
+                    index=int(parts[0].strip()) if parts[0].strip().isdigit() else 0,
+                    filename=parts[1].strip(),
+                    size=int(parts[2].strip()) if parts[2].strip().isdigit() else 0,
+                )
+            )
         return results
 
     async def save_attachment(
-        self, entry_id: str, attachment_index: int, save_directory: str, account: str,
+        self,
+        entry_id: str,
+        attachment_index: int,
+        save_directory: str,
+        account: str,
     ) -> AttachmentSavedResult:
         if not save_directory:
             save_directory = os.path.join(os.path.expanduser("~"), "Downloads")
@@ -871,123 +931,14 @@ end tell'''
         enabled_str = "true" if enabled else "false"
         msg_arg = f', out of office message "{escape(message)}"' if message else ""
 
-        script = f'''tell application "Microsoft Outlook"
+        script = f"""tell application "Microsoft Outlook"
     set out of office state to {enabled_str}{msg_arg}
     return out of office state as text
-end tell'''
+end tell"""
 
         result = await self.bridge.run(script)
         status = "on" if "true" in result.lower() else "off"
         return OofSetResult(out_of_office=status == "on", status=status)
-
-    # --- internal helpers ---
-
-    @staticmethod
-    def _recipient_lines(addresses: str, kind: str) -> str:
-        """Build AppleScript lines adding recipients of one kind to newMsg."""
-        lines = ""
-        for addr in addresses.split(";"):
-            addr = addr.strip()
-            if addr:
-                lines += (
-                    f'make new {kind} at newMsg with properties '
-                    f'{{email address:{{address:"{escape(addr)}"}}}}\n'
-                )
-        return lines
-
-    @staticmethod
-    def _email_fields_script(var: str) -> str:
-        """AppleScript lines collecting sender/time/recipient/body fields."""
-        return f'''set msender to ""
-    try
-        set msender to address of sender of {var}
-    end try
-    set msenderName to ""
-    try
-        set msenderName to name of sender of {var}
-    end try
-    set mtime to time received of {var} as string
-    set misread to is read of {var}
-    set mattcount to 0
-    try
-        set mattcount to count of attachments of {var}
-    end try
-    set mto to ""
-    try
-        set recips to to recipients of {var}
-        repeat with r in recips
-            set mto to mto & address of r & "; "
-        end repeat
-    end try
-    set mcc to ""
-    try
-        set recips to cc recipients of {var}
-        repeat with r in recips
-            set mcc to mcc & address of r & "; "
-        end repeat
-    end try
-    set mbody to ""
-    try
-        set mbody to plain text content of {var}
-    end try'''
-
-    @staticmethod
-    def _parse_email_summaries(raw: str) -> list[EmailSummary]:
-        from outlook_desktop_mcp.backends.mac.applescript_helpers import parse_date
-
-        results: list[EmailSummary] = []
-        for record in (raw or "").split(RECORD_DELIM):
-            record = record.strip()
-            if not record:
-                continue
-            parts = record.split(DELIM)
-            if len(parts) < 7:
-                continue
-            att_count = int(parts[6]) if parts[6].strip().isdigit() else 0
-            results.append(EmailSummary(
-                entry_id=parts[0].strip(),
-                subject=parts[1].strip() or "(no subject)",
-                sender=parts[2].strip(),
-                sender_name=parts[3].strip(),
-                received_time=_clean(parts[4]),
-                unread=parts[5].strip().lower() != "true",  # is_read -> unread
-                has_attachments=att_count > 0,
-                attachment_count=att_count,
-            ))
-        return results
-
-    @staticmethod
-    def _parse_event_summaries(raw: str) -> list[EventSummary]:
-        results: list[EventSummary] = []
-        for record in (raw or "").split(RECORD_DELIM):
-            record = record.strip()
-            if not record:
-                continue
-            parts = record.split(DELIM)
-            if len(parts) < 7:
-                continue
-            results.append(EventSummary(
-                entry_id=parts[0].strip(),
-                subject=parts[1].strip() or "(no subject)",
-                start=parts[2].strip(),
-                end=parts[3].strip(),
-                location=_clean(parts[4]),
-                organizer=_clean(parts[5]),
-                all_day=parts[6].strip().lower() == "true",
-            ))
-        return results
-
-    @staticmethod
-    def _to_iso(locale_time: str) -> str | None:
-        """Best-effort conversion of an AppleScript date string to ISO 8601."""
-        from outlook_desktop_mcp.backends.mac.applescript_helpers import parse_date
-
-        iso = parse_date(locale_time)
-        try:
-            datetime.fromisoformat(iso)
-            return iso
-        except ValueError:
-            return None
 
     async def _ui_list_messages(self, count: int = 10) -> list[EmailSummary]:
         """Read visible inbox messages via UI scripting (System Events).
@@ -996,21 +947,19 @@ end tell'''
         only sees the empty local mailbox.
         """
         script = (
-            _UI_MESSAGE_LIST_PATH +
-            f'                                    set rowList to rows\n'
-            f'                                    set rowCount to count of rowList\n'
-            f'                                    set maxRows to rowCount\n'
-            f'                                    if maxRows > {count} then set maxRows to {count}\n'
+            _UI_MESSAGE_LIST_PATH + f"                                    set rowList to rows\n"
+            f"                                    set rowCount to count of rowList\n"
+            f"                                    set maxRows to rowCount\n"
+            f"                                    if maxRows > {count} then set maxRows to {count}\n"
             f'                                    set output to ""\n'
-            f'                                    repeat with i from 1 to maxRows\n'
-            f'                                        set r to row i\n'
-            f'                                        try\n'
-            f'                                            set cellDesc to description of UI element 1 of r\n'
+            f"                                    repeat with i from 1 to maxRows\n"
+            f"                                        set r to row i\n"
+            f"                                        try\n"
+            f"                                            set cellDesc to description of UI element 1 of r\n"
             f'                                            set output to output & cellDesc & "{RECORD_DELIM}"\n'
-            f'                                        end try\n'
-            f'                                    end repeat\n'
-            f'                                    return output\n' +
-            _UI_MESSAGE_LIST_END
+            f"                                        end try\n"
+            f"                                    end repeat\n"
+            f"                                    return output\n" + _UI_MESSAGE_LIST_END
         )
 
         raw = await self.bridge.run(script)
@@ -1018,8 +967,8 @@ end tell'''
             return []
 
         results = []
-        for idx, record in enumerate(raw.split(RECORD_DELIM), start=1):
-            record = record.strip()
+        for idx, raw_record in enumerate(raw.split(RECORD_DELIM), start=1):
+            record = raw_record.strip()
             if not record:
                 continue
             # Cell description format uses `,` + 4+ spaces as major field
@@ -1050,20 +999,131 @@ end tell'''
             comma_pos = ss.find(", ")
             if comma_pos > 0:
                 sender = ss[:comma_pos].strip()
-                subject = ss[comma_pos + 2:].strip()
+                subject = ss[comma_pos + 2 :].strip()
             else:
                 sender = ""
                 subject = ss.strip()
 
-            results.append(EmailSummary(
-                entry_id=f"ui-{idx}",
-                subject=subject or "(could not parse subject)",
-                sender="",
-                sender_name=sender,
-                received_time=time_str,
-                unread=is_unread,
-                has_attachments=has_attachment,
-                attachment_count=1 if has_attachment else 0,
-            ))
+            results.append(
+                EmailSummary(
+                    entry_id=f"ui-{idx}",
+                    subject=subject or "(could not parse subject)",
+                    sender="",
+                    sender_name=sender,
+                    received_time=time_str,
+                    unread=is_unread,
+                    has_attachments=has_attachment,
+                    attachment_count=1 if has_attachment else 0,
+                )
+            )
 
         return results
+
+    # --- internal helpers ---
+
+    @staticmethod
+    def _recipient_lines(addresses: str, kind: str) -> str:
+        """Build AppleScript lines adding recipients of one kind to newMsg."""
+        lines = ""
+        for raw_addr in addresses.split(";"):
+            addr = raw_addr.strip()
+            if addr:
+                lines += f'make new {kind} at newMsg with properties {{email address:{{address:"{escape(addr)}"}}}}\n'
+        return lines
+
+    @staticmethod
+    def _email_fields_script(var: str) -> str:
+        """AppleScript lines collecting sender/time/recipient/body fields."""
+        return f"""set msender to ""
+    try
+        set msender to address of sender of {var}
+    end try
+    set msenderName to ""
+    try
+        set msenderName to name of sender of {var}
+    end try
+    set mtime to time received of {var} as string
+    set misread to is read of {var}
+    set mattcount to 0
+    try
+        set mattcount to count of attachments of {var}
+    end try
+    set mto to ""
+    try
+        set recips to to recipients of {var}
+        repeat with r in recips
+            set mto to mto & address of r & "; "
+        end repeat
+    end try
+    set mcc to ""
+    try
+        set recips to cc recipients of {var}
+        repeat with r in recips
+            set mcc to mcc & address of r & "; "
+        end repeat
+    end try
+    set mbody to ""
+    try
+        set mbody to plain text content of {var}
+    end try"""
+
+    @staticmethod
+    def _parse_email_summaries(raw: str) -> list[EmailSummary]:
+
+        results: list[EmailSummary] = []
+        for raw_record in (raw or "").split(RECORD_DELIM):
+            record = raw_record.strip()
+            if not record:
+                continue
+            parts = record.split(DELIM)
+            if len(parts) < 7:
+                continue
+            att_count = int(parts[6]) if parts[6].strip().isdigit() else 0
+            results.append(
+                EmailSummary(
+                    entry_id=parts[0].strip(),
+                    subject=parts[1].strip() or "(no subject)",
+                    sender=parts[2].strip(),
+                    sender_name=parts[3].strip(),
+                    received_time=_clean(parts[4]),
+                    unread=parts[5].strip().lower() != "true",  # is_read -> unread
+                    has_attachments=att_count > 0,
+                    attachment_count=att_count,
+                )
+            )
+        return results
+
+    @staticmethod
+    def _parse_event_summaries(raw: str) -> list[EventSummary]:
+        results: list[EventSummary] = []
+        for raw_record in (raw or "").split(RECORD_DELIM):
+            record = raw_record.strip()
+            if not record:
+                continue
+            parts = record.split(DELIM)
+            if len(parts) < 7:
+                continue
+            results.append(
+                EventSummary(
+                    entry_id=parts[0].strip(),
+                    subject=parts[1].strip() or "(no subject)",
+                    start=parts[2].strip(),
+                    end=parts[3].strip(),
+                    location=_clean(parts[4]),
+                    organizer=_clean(parts[5]),
+                    all_day=parts[6].strip().lower() == "true",
+                )
+            )
+        return results
+
+    @staticmethod
+    def _to_iso(locale_time: str) -> str | None:
+        """Best-effort conversion of an AppleScript date string to ISO 8601."""
+        from outlook_desktop_mcp.backends.mac.applescript_helpers import parse_date  # noqa: PLC0415
+
+        iso = parse_date(locale_time)
+        try:
+            datetime.fromisoformat(iso)
+            return iso
+        except ValueError:
+            return None

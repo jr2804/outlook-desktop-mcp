@@ -4,10 +4,10 @@ Every tool returns JSON derived from these models:
 - success objects carry a ``status`` field (or are arrays of info models)
 - failures are represented by ``Error``
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
-
 
 # --- Errors ---
 

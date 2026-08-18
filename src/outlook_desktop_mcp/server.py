@@ -11,6 +11,7 @@ only in ``entrypoint.py``.
 
 Entry point: python -m outlook_desktop_mcp
 """
+
 from __future__ import annotations
 
 import json
@@ -64,7 +65,7 @@ def set_backend(b: Backend, platform: Platform) -> None:
     string and re-registers every tool already bound to the template
     instance.
     """
-    global backend, mcp
+    global backend, mcp  # noqa: PLW0603
     backend = b
 
     live_mcp = FastMCP("outlook-desktop-mcp", instructions=build_instructions(platform))
@@ -109,7 +110,7 @@ def _dump(result: BaseModel | list[BaseModel]) -> str:
 M = TypeVar("M", bound=BaseModel)
 
 
-async def _run(action: str, call: Callable[[], Awaitable[M | list[BaseModel]]]) -> str:
+async def _run[M: BaseModel](action: str, call: Callable[[], Awaitable[M | list[BaseModel]]]) -> str:
     """Execute a backend call, converting failures into Error JSON."""
     try:
         return _dump(await call())
@@ -132,11 +133,7 @@ def _validate_subject(subject: str | None, *, allow_skip: bool = False) -> str |
     if not subject and allow_skip:
         return None
     if not subject or not subject.strip():
-        msg = (
-            "subject is required and must not be blank"
-            if not allow_skip
-            else "subject, if provided, must not be blank"
-        )
+        msg = "subject is required and must not be blank" if not allow_skip else "subject, if provided, must not be blank"
         return Error(error=msg).model_dump_json(indent=2)
     return None
 
@@ -179,9 +176,7 @@ async def send_email(
     """
     return await _run(
         "Error sending email",
-        lambda: _require_backend().compose_email(
-            to, subject, body, cc, bcc, html_body, account, send=True
-        ),
+        lambda: _require_backend().compose_email(to, subject, body, cc, bcc, html_body, account, send=True),
     )
 
 
@@ -218,9 +213,7 @@ async def draft_email(
     """
     return await _run(
         "Error creating draft",
-        lambda: _require_backend().compose_email(
-            to, subject, body, cc, bcc, html_body, account, send=False
-        ),
+        lambda: _require_backend().compose_email(to, subject, body, cc, bcc, html_body, account, send=False),
     )
 
 
@@ -261,9 +254,7 @@ async def list_emails(
     """
     return await _run(
         "Error listing emails",
-        lambda: _require_backend().list_emails(
-            folder, count, unread_only, start_date, end_date, account
-        ),
+        lambda: _require_backend().list_emails(folder, count, unread_only, start_date, end_date, account),
     )
 
 
@@ -506,9 +497,7 @@ async def search_emails(
     """
     return await _run(
         "Error searching emails",
-        lambda: _require_backend().search_emails(
-            query, folder, count, start_date, end_date, account
-        ),
+        lambda: _require_backend().search_emails(query, folder, count, start_date, end_date, account),
     )
 
 
@@ -621,9 +610,7 @@ async def create_event(
         return err
     return await _run(
         "Error creating event",
-        lambda: _require_backend().create_event(
-            subject, start, end, location, body, all_day, reminder_minutes, account, folder
-        ),
+        lambda: _require_backend().create_event(subject, start, end, location, body, all_day, reminder_minutes, account, folder),
     )
 
 
@@ -666,8 +653,14 @@ async def create_meeting(
     return await _run(
         "Error creating meeting",
         lambda: _require_backend().create_meeting(
-            subject, start, end, required_attendees, location, body,
-            optional_attendees, account,
+            subject,
+            start,
+            end,
+            required_attendees,
+            location,
+            body,
+            optional_attendees,
+            account,
         ),
     )
 
@@ -705,9 +698,7 @@ async def update_event(
         return err
     return await _run(
         "Error updating event",
-        lambda: _require_backend().update_event(
-            entry_id, subject, start, end, location, body, account
-        ),
+        lambda: _require_backend().update_event(entry_id, subject, start, end, location, body, account),
     )
 
 
@@ -765,9 +756,7 @@ async def search_events(
     """
     return await _run(
         "Error searching events",
-        lambda: _require_backend().search_events(
-            query, start_date, end_date, count, account, folder
-        ),
+        lambda: _require_backend().search_events(query, start_date, end_date, count, account, folder),
     )
 
 
@@ -850,9 +839,7 @@ async def create_task(
         return err
     return await _run(
         "Error creating task",
-        lambda: _require_backend().create_task(
-            subject, body, due_date, importance, reminder_minutes, account
-        ),
+        lambda: _require_backend().create_task(subject, body, due_date, importance, reminder_minutes, account),
     )
 
 
@@ -942,9 +929,7 @@ async def save_attachment(
     """
     return await _run(
         "Error saving attachment",
-        lambda: _require_backend().save_attachment(
-            entry_id, attachment_index, save_directory, account
-        ),
+        lambda: _require_backend().save_attachment(entry_id, attachment_index, save_directory, account),
     )
 
 
@@ -1146,10 +1131,7 @@ async def get_out_of_office(account: str = "") -> str:
 
 def main() -> None:
     if backend is None:
-        raise RuntimeError(
-            "No backend configured. Use outlook_desktop_mcp.entrypoint, "
-            "which selects the platform backend."
-        )
+        raise RuntimeError("No backend configured. Use outlook_desktop_mcp.entrypoint, which selects the platform backend.")
     logger.info("Starting Outlook Desktop MCP server (backend: %s)...", backend.name)
     backend.start()
     logger.info("Backend ready. Starting MCP stdio transport...")

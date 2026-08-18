@@ -8,6 +8,7 @@ Subclasses implement :meth:`start`, :meth:`stop`, and the async ``run``
 method. Backends must only import the concrete subclass from
 ``outlook_desktop_mcp.backends.win`` or ``outlook_desktop_mcp.backends.mac``.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

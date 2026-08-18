@@ -3,6 +3,7 @@
 All methods run their COM work on the bridge thread via ``bridge.call`` and
 return pydantic models. Handled failures raise :class:`BackendError`.
 """
+
 from __future__ import annotations
 
 import logging
@@ -11,17 +12,27 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, cast
 
+from outlook_desktop_mcp.backends.base import Backend, BackendError
 from outlook_desktop_mcp.backends.win._types import (
     Appointment,
     Folder,
     MailItem,
     Namespace,
-    Outlook as OutlookCOM,
     Store,
     TaskItem,
 )
-from outlook_desktop_mcp.backends.base import Backend, BackendError
+from outlook_desktop_mcp.backends.win._types import (
+    Outlook as OutlookCOM,
+)
 from outlook_desktop_mcp.backends.win.bridge import OutlookBridge
+from outlook_desktop_mcp.backends.win.formatting import (
+    format_email_full,
+    format_email_summary,
+    format_event_full,
+    format_event_summary,
+    format_task_full,
+    format_task_summary,
+)
 from outlook_desktop_mcp.models import (
     AccountInfo,
     AttachmentInfo,
@@ -66,14 +77,6 @@ from outlook_desktop_mcp.tools._folder_constants import (
     OL_RESPONSE_TENTATIVE,
     OL_TASK_COMPLETE,
     OL_TASK_ITEM,
-)
-from outlook_desktop_mcp.backends.win.formatting import (
-    format_email_full,
-    format_email_summary,
-    format_event_full,
-    format_event_summary,
-    format_task_full,
-    format_task_summary,
 )
 
 logger = logging.getLogger("outlook_desktop_mcp.backends.win.backend")
@@ -127,9 +130,7 @@ def _require_store(namespace: Namespace, account: str = "") -> Store:
     """Resolve store, raising BackendError if not found."""
     store = _resolve_store(namespace, account)
     if store is None:
-        raise BackendError(
-            f"Account '{account}' not found. Use list_accounts to see available accounts."
-        )
+        raise BackendError(f"Account '{account}' not found. Use list_accounts to see available accounts.")
     return store
 
 
@@ -143,14 +144,12 @@ def _walk_folders(parent: Folder, name_lower: str) -> Folder | None:
             found = _walk_folders(f, name_lower)
             if found:
                 return found
-        except Exception:
+        except Exception:  # noqa: S112
             continue
     return None
 
 
-def _resolve_folder(
-    namespace: Namespace, folder_name: str, store: Store | None = None
-) -> Folder | None:
+def _resolve_folder(namespace: Namespace, folder_name: str, store: Store | None = None) -> Folder | None:
     """Resolve a folder name to an Outlook MAPIFolder object.
 
     Resolution order:
@@ -176,7 +175,7 @@ def _resolve_folder(
                     if f.Name.lower() == part_lower:
                         found = f
                         break
-                except Exception:
+                except Exception:  # noqa: S112
                     continue
             if found is None:
                 return None
@@ -194,7 +193,7 @@ def _resolve_folder(
             f = root.Folders.Item(i + 1)
             if f.Name.lower() == folder_lower:
                 return f
-        except Exception:
+        except Exception:  # noqa: S112
             continue
 
     return _walk_folders(root, folder_lower)
@@ -221,7 +220,7 @@ class ComBackend(Backend):
 
     def format_unexpected_error(self, action: str, e: Exception) -> str:
         """Surface COM HRESULT detail (Windows-only override)."""
-        from outlook_desktop_mcp.backends.win.errors import format_com_error
+        from outlook_desktop_mcp.backends.win.errors import format_com_error  # noqa: PLC0415
 
         return f"{action}: {format_com_error(e)}"
 
@@ -245,8 +244,15 @@ class ComBackend(Backend):
     # --- email ---
 
     async def compose_email(
-        self, to: str, subject: str, body: str, cc: str, bcc: str,
-        html_body: str, account: str, send: bool,
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        cc: str,
+        bcc: str,
+        html_body: str,
+        account: str,
+        send: bool,
     ) -> SentResult | DraftSavedResult:
         def _compose(outlook: OutlookCOM, namespace: Namespace) -> SentResult | DraftSavedResult:
             store = _require_store(namespace, account)
@@ -273,11 +279,16 @@ class ComBackend(Backend):
         return await self.bridge.call(_compose)
 
     async def list_emails(
-        self, folder: str, count: int, unread_only: bool,
-        start_date: str, end_date: str, account: str,
+        self,
+        folder: str,
+        count: int,
+        unread_only: bool,
+        start_date: str,
+        end_date: str,
+        account: str,
     ) -> list[EmailSummary]:
         def _list(outlook: OutlookCOM, namespace: Namespace) -> list[EmailSummary]:
-            count = min(max(1, count), 200)
+            effective_count = min(max(1, count), 200)
             store = _require_store(namespace, account)
             target = _resolve_folder(namespace, folder, store)
             if not target:
@@ -296,26 +307,28 @@ class ComBackend(Backend):
                 end = _parse_date(end_date)
                 restrictions.append(f"[ReceivedTime] <= '{end.strftime('%m/%d/%Y %H:%M')}'")
             elif start_date:
-                restrictions.append(
-                    f"[ReceivedTime] <= '{datetime.now().strftime('%m/%d/%Y %H:%M')}'"
-                )
+                restrictions.append(f"[ReceivedTime] <= '{datetime.now().strftime('%m/%d/%Y %H:%M')}'")
 
             if restrictions:
                 items = items.Restrict(" AND ".join(restrictions))
 
             results = []
-            limit = min(count, items.Count)
+            limit = min(effective_count, items.Count)
             for i in range(limit):
                 try:
                     results.append(EmailSummary.model_validate(format_email_summary(items.Item(i + 1))))
-                except Exception:
+                except Exception:  # noqa: S112
                     continue
             return results
 
         return await self.bridge.call(_list)
 
     async def read_email(
-        self, entry_id: str, subject_search: str, folder: str, account: str,
+        self,
+        entry_id: str,
+        subject_search: str,
+        folder: str,
+        account: str,
     ) -> EmailFull:
         def _read(outlook: OutlookCOM, namespace: Namespace) -> EmailFull:
             if entry_id:
@@ -371,10 +384,7 @@ class ComBackend(Backend):
             store = _require_store(namespace, account)
             dest = _resolve_folder(namespace, target_folder, store)
             if not dest:
-                raise BackendError(
-                    f"Target folder '{target_folder}' not found. "
-                    "Use list_folders to see available folders."
-                )
+                raise BackendError(f"Target folder '{target_folder}' not found. Use list_folders to see available folders.")
 
             item.Move(dest)
             return MovedResult(subject=subject, target_folder=target_folder)
@@ -382,10 +392,16 @@ class ComBackend(Backend):
         return await self.bridge.call(_move)
 
     async def reply_email(
-        self, entry_id: str, body: str, reply_all: bool, account: str, send: bool,
+        self,
+        entry_id: str,
+        body: str,
+        reply_all: bool,
+        account: str,
+        send: bool,
     ) -> ReplySentResult | ReplyDraftSavedResult:
         def _reply(
-            outlook: OutlookCOM, namespace: Namespace,
+            outlook: OutlookCOM,
+            namespace: Namespace,
         ) -> ReplySentResult | ReplyDraftSavedResult:
             item = self._get_item(namespace, entry_id, account)
             _require_class(item, _OL_CLASS_MAIL, "mail item")
@@ -396,15 +412,13 @@ class ComBackend(Backend):
                 reply_item.Send()
                 return ReplySentResult(subject=subject, reply_all=reply_all)
             reply_item.Save()
-            return ReplyDraftSavedResult(
-                subject=subject, reply_all=reply_all, entry_id=reply_item.EntryID
-            )
+            return ReplyDraftSavedResult(subject=subject, reply_all=reply_all, entry_id=reply_item.EntryID)
 
         return await self.bridge.call(_reply)
 
     async def list_folders(self, folder: str, max_depth: int, account: str) -> list[FolderInfo]:
         def _list(outlook: OutlookCOM, namespace: Namespace) -> list[FolderInfo]:
-            max_depth = min(max(1, max_depth), 10)
+            effective_max_depth = min(max(1, max_depth), 10)
             store = _require_store(namespace, account)
 
             if folder:
@@ -424,12 +438,12 @@ class ComBackend(Backend):
                     item_count=f.Items.Count,
                     unread_count=f.UnReadItemCount,
                 )
-                if depth < max_depth:
+                if depth < effective_max_depth:
                     for i in range(f.Folders.Count):
                         try:
                             child: Folder = f.Folders.Item(i + 1)
                             info.subfolders.append(walk(child, depth + 1, current_path))
-                        except Exception:
+                        except Exception:  # noqa: S112
                             continue
                 return info
 
@@ -438,54 +452,49 @@ class ComBackend(Backend):
                 try:
                     child: Folder = start.Folders.Item(i + 1)
                     folders.append(walk(child, 1, base_path))
-                except Exception:
+                except Exception:  # noqa: S112
                     continue
             return folders
 
         return await self.bridge.call(_list)
 
     async def search_emails(
-        self, query: str, folder: str, count: int,
-        start_date: str, end_date: str, account: str,
+        self,
+        query: str,
+        folder: str,
+        count: int,
+        start_date: str,
+        end_date: str,
+        account: str,
     ) -> list[EmailSummary]:
         def _search(outlook: OutlookCOM, namespace: Namespace) -> list[EmailSummary]:
-            count = min(max(1, count), 200)
+            effective_count = min(max(1, count), 200)
             store = _require_store(namespace, account)
             target = _resolve_folder(namespace, folder, store)
             if not target:
                 raise BackendError(f"Folder '{folder}' not found")
 
             safe_query = _safe_dasl(query)
-            dasl_parts = [
-                f"(\"urn:schemas:httpmail:subject\" LIKE '%{safe_query}%' OR "
-                f"\"urn:schemas:httpmail:textdescription\" LIKE '%{safe_query}%')"
-            ]
+            dasl_parts = [f"(\"urn:schemas:httpmail:subject\" LIKE '%{safe_query}%' OR \"urn:schemas:httpmail:textdescription\" LIKE '%{safe_query}%')"]
             if start_date:
                 start = _parse_date(start_date)
-                dasl_parts.append(
-                    f"\"urn:schemas:httpmail:datereceived\" >= '{start.strftime('%m/%d/%Y %H:%M')}'"
-                )
+                dasl_parts.append(f"\"urn:schemas:httpmail:datereceived\" >= '{start.strftime('%m/%d/%Y %H:%M')}'")
             if end_date:
                 end = _parse_date(end_date)
-                dasl_parts.append(
-                    f"\"urn:schemas:httpmail:datereceived\" <= '{end.strftime('%m/%d/%Y %H:%M')}'"
-                )
+                dasl_parts.append(f"\"urn:schemas:httpmail:datereceived\" <= '{end.strftime('%m/%d/%Y %H:%M')}'")
             elif start_date:
-                dasl_parts.append(
-                    f"\"urn:schemas:httpmail:datereceived\" <= "
-                    f"'{datetime.now().strftime('%m/%d/%Y %H:%M')}'"
-                )
+                dasl_parts.append(f"\"urn:schemas:httpmail:datereceived\" <= '{datetime.now().strftime('%m/%d/%Y %H:%M')}'")
 
             filter_str = "@SQL=" + " AND ".join(dasl_parts)
             items = target.Items.Restrict(filter_str)
             items.Sort("[ReceivedTime]", True)
 
             results = []
-            limit = min(count, items.Count)
+            limit = min(effective_count, items.Count)
             for i in range(limit):
                 try:
                     results.append(EmailSummary.model_validate(format_email_summary(items.Item(i + 1))))
-                except Exception:
+                except Exception:  # noqa: S112
                     continue
             return results
 
@@ -494,10 +503,15 @@ class ComBackend(Backend):
     # --- calendar ---
 
     async def list_events(
-        self, start_date: str, end_date: str, count: int, account: str, folder: str,
+        self,
+        start_date: str,
+        end_date: str,
+        count: int,
+        account: str,
+        folder: str,
     ) -> list[EventSummary]:
         def _list(outlook: OutlookCOM, namespace: Namespace) -> list[EventSummary]:
-            count = min(max(1, count), 200)
+            effective_count = min(max(1, count), 200)
             store = _require_store(namespace, account)
             calendar = self._resolve_calendar(namespace, folder, store)
             items = calendar.Items
@@ -509,10 +523,7 @@ class ComBackend(Backend):
             start = _parse_date(start_date) if start_date else datetime.now()
             end = _parse_date(end_date) if end_date else start + timedelta(days=7)
 
-            restrict = (
-                f"[Start] >= '{start.strftime('%m/%d/%Y %H:%M')}' "
-                f"AND [Start] <= '{end.strftime('%m/%d/%Y %H:%M')}'"
-            )
+            restrict = f"[Start] >= '{start.strftime('%m/%d/%Y %H:%M')}' AND [Start] <= '{end.strftime('%m/%d/%Y %H:%M')}'"
             filtered = items.Restrict(restrict)
 
             results = []
@@ -521,9 +532,9 @@ class ComBackend(Backend):
                 n += 1
                 try:
                     results.append(EventSummary.model_validate(format_event_summary(item)))
-                except Exception:
+                except Exception:  # noqa: S112
                     continue
-                if n >= count:
+                if n >= effective_count:
                     break
             return results
 
@@ -537,8 +548,16 @@ class ComBackend(Backend):
         return await self.bridge.call(_get)
 
     async def create_event(
-        self, subject: str, start: str, end: str, location: str, body: str,
-        all_day: bool, reminder_minutes: int, account: str, folder: str,
+        self,
+        subject: str,
+        start: str,
+        end: str,
+        location: str,
+        body: str,
+        all_day: bool,
+        reminder_minutes: int,
+        account: str,
+        folder: str,
     ) -> EventCreatedResult:
         def _create(outlook: OutlookCOM, namespace: Namespace) -> EventCreatedResult:
             appt: Appointment = outlook.CreateItem(OL_APPOINTMENT_ITEM)
@@ -573,8 +592,15 @@ class ComBackend(Backend):
         return await self.bridge.call(_create)
 
     async def create_meeting(
-        self, subject: str, start: str, end: str, required_attendees: str,
-        location: str, body: str, optional_attendees: str, account: str,
+        self,
+        subject: str,
+        start: str,
+        end: str,
+        required_attendees: str,
+        location: str,
+        body: str,
+        optional_attendees: str,
+        account: str,
     ) -> MeetingSentResult:
         def _create(outlook: OutlookCOM, namespace: Namespace) -> MeetingSentResult:
             appt: Appointment = outlook.CreateItem(OL_APPOINTMENT_ITEM)
@@ -593,15 +619,15 @@ class ComBackend(Backend):
             if body:
                 appt.Body = body
 
-            for addr in required_attendees.split(";"):
-                addr = addr.strip()
+            for raw_addr in required_attendees.split(";"):
+                addr = raw_addr.strip()
                 if addr:
                     recip = appt.Recipients.Add(addr)
                     recip.Type = OL_REQUIRED
 
             if optional_attendees:
-                for addr in optional_attendees.split(";"):
-                    addr = addr.strip()
+                for raw_addr in optional_attendees.split(";"):
+                    addr = raw_addr.strip()
                     if addr:
                         recip = appt.Recipients.Add(addr)
                         recip.Type = OL_OPTIONAL
@@ -617,8 +643,14 @@ class ComBackend(Backend):
         return await self.bridge.call(_create)
 
     async def update_event(
-        self, entry_id: str, subject: str, start: str, end: str,
-        location: str, body: str, account: str,
+        self,
+        entry_id: str,
+        subject: str,
+        start: str,
+        end: str,
+        location: str,
+        body: str,
+        account: str,
     ) -> EventUpdatedResult:
         def _update(outlook: OutlookCOM, namespace: Namespace) -> EventUpdatedResult:
             item = cast(Appointment, self._get_item(namespace, entry_id, account))
@@ -666,7 +698,10 @@ class ComBackend(Backend):
         return await self.bridge.call(_delete)
 
     async def respond_to_meeting(
-        self, entry_id: str, response: str, account: str,
+        self,
+        entry_id: str,
+        response: str,
+        account: str,
     ) -> MeetingResponseResult:
         response_map = {
             "accept": OL_RESPONSE_ACCEPTED,
@@ -675,9 +710,7 @@ class ComBackend(Backend):
         }
         response_lower = response.lower().strip()
         if response_lower not in response_map:
-            raise BackendError(
-                f"response must be 'accept', 'decline', or 'tentative'. Got: '{response}'"
-            )
+            raise BackendError(f"response must be 'accept', 'decline', or 'tentative'. Got: '{response}'")
 
         def _respond(outlook: OutlookCOM, namespace: Namespace) -> MeetingResponseResult:
             item = self._get_item(namespace, entry_id, account)
@@ -690,11 +723,16 @@ class ComBackend(Backend):
         return await self.bridge.call(_respond)
 
     async def search_events(
-        self, query: str, start_date: str, end_date: str, count: int,
-        account: str, folder: str,
+        self,
+        query: str,
+        start_date: str,
+        end_date: str,
+        count: int,
+        account: str,
+        folder: str,
     ) -> list[EventSummary]:
         def _search(outlook: OutlookCOM, namespace: Namespace) -> list[EventSummary]:
-            count = min(max(1, count), 200)
+            effective_count = min(max(1, count), 200)
             store = _require_store(namespace, account)
             calendar = self._resolve_calendar(namespace, folder, store)
             items = calendar.Items
@@ -704,10 +742,7 @@ class ComBackend(Backend):
             start = _parse_date(start_date) if start_date else datetime.now() - timedelta(days=30)
             end = _parse_date(end_date) if end_date else datetime.now() + timedelta(days=30)
 
-            restrict = (
-                f"[Start] >= '{start.strftime('%m/%d/%Y %H:%M')}' "
-                f"AND [Start] <= '{end.strftime('%m/%d/%Y %H:%M')}'"
-            )
+            restrict = f"[Start] >= '{start.strftime('%m/%d/%Y %H:%M')}' AND [Start] <= '{end.strftime('%m/%d/%Y %H:%M')}'"
             filtered = items.Restrict(restrict)
 
             query_lower = query.lower()
@@ -716,9 +751,9 @@ class ComBackend(Backend):
                 if query_lower in (item.Subject or "").lower():
                     try:
                         results.append(EventSummary.model_validate(format_event_summary(item)))
-                    except Exception:
+                    except Exception:  # noqa: S112
                         continue
-                    if len(results) >= count:
+                    if len(results) >= effective_count:
                         break
             return results
 
@@ -727,10 +762,13 @@ class ComBackend(Backend):
     # --- tasks ---
 
     async def list_tasks(
-        self, include_completed: bool, count: int, account: str,
+        self,
+        include_completed: bool,
+        count: int,
+        account: str,
     ) -> list[TaskSummary]:
         def _list(outlook: OutlookCOM, namespace: Namespace) -> list[TaskSummary]:
-            count = min(max(1, count), 200)
+            effective_count = min(max(1, count), 200)
             store = _require_store(namespace, account)
             folder = store.GetDefaultFolder(OL_FOLDER_TASKS)
             items = folder.Items
@@ -740,11 +778,11 @@ class ComBackend(Backend):
                 items = items.Restrict("[Complete] = False")
 
             results = []
-            limit = min(count, items.Count)
+            limit = min(effective_count, items.Count)
             for i in range(limit):
                 try:
                     results.append(TaskSummary.model_validate(format_task_summary(items.Item(i + 1))))
-                except Exception:
+                except Exception:  # noqa: S112
                     continue
             return results
 
@@ -758,8 +796,13 @@ class ComBackend(Backend):
         return await self.bridge.call(_get)
 
     async def create_task(
-        self, subject: str, body: str, due_date: str, importance: str,
-        reminder_minutes: int, account: str,
+        self,
+        subject: str,
+        body: str,
+        due_date: str,
+        importance: str,
+        reminder_minutes: int,
+        account: str,
     ) -> TaskCreatedResult:
         def _create(outlook: OutlookCOM, namespace: Namespace) -> TaskCreatedResult:
             task: TaskItem = outlook.CreateItem(OL_TASK_ITEM)
@@ -823,14 +866,16 @@ class ComBackend(Backend):
         return await self.bridge.call(_list)
 
     async def save_attachment(
-        self, entry_id: str, attachment_index: int, save_directory: str, account: str,
+        self,
+        entry_id: str,
+        attachment_index: int,
+        save_directory: str,
+        account: str,
     ) -> AttachmentSavedResult:
         def _save(outlook: OutlookCOM, namespace: Namespace) -> AttachmentSavedResult:
             item = self._get_item(namespace, entry_id, account)
             if attachment_index < 1 or item.Attachments.Count < attachment_index:
-                raise BackendError(
-                    f"Only {item.Attachments.Count} attachment(s), requested index {attachment_index}"
-                )
+                raise BackendError(f"Only {item.Attachments.Count} attachment(s), requested index {attachment_index}")
 
             att = item.Attachments.Item(attachment_index)
             if not save_directory:
@@ -862,16 +907,15 @@ class ComBackend(Backend):
     async def list_categories(self, account: str) -> list[CategoryInfo]:
         def _list(outlook: OutlookCOM, namespace: Namespace) -> list[CategoryInfo]:
             # Categories are profile-wide, not per-store; account accepted for consistency
-            return [
-                CategoryInfo(name=cat.Name, color=cat.Color)
-                for i in range(namespace.Categories.Count)
-                for cat in [namespace.Categories.Item(i + 1)]
-            ]
+            return [CategoryInfo(name=cat.Name, color=cat.Color) for i in range(namespace.Categories.Count) for cat in [namespace.Categories.Item(i + 1)]]
 
         return await self.bridge.call(_list)
 
     async def set_category(
-        self, entry_id: str, categories: str, account: str,
+        self,
+        entry_id: str,
+        categories: str,
+        account: str,
     ) -> CategoriesSetResult:
         def _set(outlook: OutlookCOM, namespace: Namespace) -> CategoriesSetResult:
             item = self._get_item(namespace, entry_id, account)
@@ -887,11 +931,7 @@ class ComBackend(Backend):
         def _list(outlook: OutlookCOM, namespace: Namespace) -> list[RuleInfo]:
             store = _require_store(namespace, account)
             rules = store.GetRules()
-            return [
-                RuleInfo(index=i + 1, name=rule.Name, enabled=bool(rule.Enabled))
-                for i in range(rules.Count)
-                for rule in [rules.Item(i + 1)]
-            ]
+            return [RuleInfo(index=i + 1, name=rule.Name, enabled=bool(rule.Enabled)) for i in range(rules.Count) for rule in [rules.Item(i + 1)]]
 
         return await self.bridge.call(_list)
 
@@ -905,12 +945,8 @@ class ComBackend(Backend):
                     logger.warning("toggle_rule: setting rule '%s' enabled=%s", rule_name, enabled)
                     rule.Enabled = enabled
                     rules.Save()
-                    return RuleToggledResult(
-                        status="enabled" if enabled else "disabled", rule=rule_name
-                    )
-            raise BackendError(
-                f"Rule '{rule_name}' not found. Use list_rules to see available rules."
-            )
+                    return RuleToggledResult(status="enabled" if enabled else "disabled", rule=rule_name)
+            raise BackendError(f"Rule '{rule_name}' not found. Use list_rules to see available rules.")
 
         return await self.bridge.call(_toggle)
 
@@ -939,10 +975,7 @@ class ComBackend(Backend):
             store.PropertyAccessor.SetProperty(prop_tag, enabled)
             note = ""
             if enabled and message:
-                note = (
-                    "OOF enabled, but the auto-reply message cannot be set via "
-                    "COM. Configure it in Outlook: File > Automatic Replies."
-                )
+                note = "OOF enabled, but the auto-reply message cannot be set via COM. Configure it in Outlook: File > Automatic Replies."
             return OofSetResult(
                 out_of_office=enabled,
                 status="on" if enabled else "off",

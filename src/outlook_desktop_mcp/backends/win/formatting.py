@@ -1,12 +1,14 @@
 """Helpers for extracting and formatting Outlook item data."""
+
 import re
+from typing import Any
 
 from outlook_desktop_mcp.tools._folder_constants import (
     BUSY_STATUS_NAMES,
+    IMPORTANCE_NAMES,
     MEETING_STATUS_NAMES,
     RESPONSE_NAMES,
     TASK_STATUS_NAMES,
-    IMPORTANCE_NAMES,
 )
 
 
@@ -22,7 +24,7 @@ def strip_html(html: str) -> str:
     return text
 
 
-def format_email_summary(item) -> dict:
+def format_email_summary(item: Any) -> dict:
     """Extract key fields from an Outlook MailItem into a dict."""
     return {
         "entry_id": item.EntryID,
@@ -36,7 +38,7 @@ def format_email_summary(item) -> dict:
     }
 
 
-def format_email_full(item, body_max_length: int = 5000) -> dict:
+def format_email_full(item: Any, body_max_length: int = 5000) -> dict:
     """Extract full email details including body."""
     result = format_email_summary(item)
     result["to"] = item.To or ""
@@ -48,7 +50,7 @@ def format_email_full(item, body_max_length: int = 5000) -> dict:
 # --- Calendar formatting ---
 
 
-def format_event_summary(item) -> dict:
+def format_event_summary(item: Any) -> dict:
     """Extract key fields from an Outlook AppointmentItem."""
     return {
         "entry_id": item.EntryID,
@@ -67,14 +69,12 @@ def format_event_summary(item) -> dict:
     }
 
 
-def format_event_full(item, body_max_length: int = 5000) -> dict:
+def format_event_full(item: Any, body_max_length: int = 5000) -> dict:
     """Full event details including body."""
     result = format_event_summary(item)
     result["body"] = truncate(item.Body or "", body_max_length)
     result["reminder_set"] = bool(item.ReminderSet)
-    result["reminder_minutes"] = (
-        item.ReminderMinutesBeforeStart if item.ReminderSet else None
-    )
+    result["reminder_minutes"] = item.ReminderMinutesBeforeStart if item.ReminderSet else None
     result["categories"] = item.Categories or ""
     result["response_status"] = RESPONSE_NAMES.get(item.ResponseStatus, "unknown")
     return result
@@ -83,7 +83,7 @@ def format_event_full(item, body_max_length: int = 5000) -> dict:
 # --- Task formatting ---
 
 
-def format_task_summary(item) -> dict:
+def format_task_summary(item: Any) -> dict:
     """Extract key fields from an Outlook TaskItem."""
     return {
         "entry_id": item.EntryID,
@@ -99,12 +99,10 @@ def format_task_summary(item) -> dict:
     }
 
 
-def format_task_full(item, body_max_length: int = 5000) -> dict:
+def format_task_full(item: Any, body_max_length: int = 5000) -> dict:
     """Full task details including body."""
     result = format_task_summary(item)
     result["body"] = truncate(item.Body or "", body_max_length)
     result["reminder_set"] = bool(item.ReminderSet)
-    result["date_completed"] = (
-        str(item.DateCompleted) if item.Complete else None
-    )
+    result["date_completed"] = str(item.DateCompleted) if item.Complete else None
     return result
