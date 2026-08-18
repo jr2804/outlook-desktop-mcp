@@ -2,7 +2,7 @@
 
 ## Branching Strategy
 
-```
+```text
 feature/your-change → PR → preview → PR → main → auto-publish to PyPI
 ```
 
@@ -15,11 +15,13 @@ feature/your-change → PR → preview → PR → main → auto-publish to PyPI
 1. **Fork** the repo to your GitHub account
 2. **Clone** your fork locally
 3. **Create a branch** from `preview`:
+
    ```bash
    git checkout preview
    git pull origin preview
    git checkout -b feature/my-change
    ```
+
 4. **Make your changes**, commit, push to your fork
 5. **Open a PR** into `preview` (not `main`)
 6. Once reviewed and merged to `preview`, it will be tested there

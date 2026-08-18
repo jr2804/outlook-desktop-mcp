@@ -10,7 +10,7 @@ Any MCP client (Claude Code, Claude Desktop, etc.) can then send emails, manage 
 
 ## Quick Start
 
-**1. Install** (requires Python 3.12+):
+**1. Install** (requires Python 3.13+):
 
 ```bash
 pip install outlook-desktop-mcp
@@ -28,45 +28,46 @@ claude mcp add outlook-desktop -- outlook-desktop-mcp
 
 When the server starts, it checks which operating system it is running on and takes one of two paths:
 
-```
+```text
                         outlook-desktop-mcp starts
                                   |
-                          sys.platform check
+                        entrypoint.py detects OS
+                          (Platform.WINDOWS |
+                           Platform.DARWIN)
+                                  |
+                    set_backend(backend, platform)
                          /                  \
-                   "win32"                "darwin"
-                      |                      |
-              ┌───────┴────────┐    ┌────────┴────────┐
-              │  server.py     │    │  server_mac.py   │
-              │  COM Bridge    │    │  AppleScript     │
-              │  (29 tools)    │    │  Bridge          │
-              │                │    │  (22 tools)      │
-              └───────┬────────┘    └────────┬─────────┘
-                      |                      |
-              OUTLOOK.EXE via         Microsoft Outlook
-              COM / STA thread        via osascript
-                      |                      |
-              Exchange / M365         Exchange / M365
+               backends/win/            backends/mac/
+               ComBackend               AppleScriptBackend
+               OutlookBridge            AppleScriptBridge
+                  |                        |
+           33 tools registered       26 tools registered
+                  |                        |
+          OUTLOOK.EXE via           Microsoft Outlook
+          COM / STA thread          via osascript
+                  |                        |
+          Exchange / M365           Exchange / M365
 ```
 
 **Both paths use your locally running Outlook app and its existing authenticated session.** No cloud credentials, no Graph API tokens — the server inherits whatever account Outlook is signed into.
 
-### Why two paths?
+### Why two backends?
 
 Windows Outlook (Classic) exposes a rich COM automation interface — the Outlook Object Model (`MSOUTL.OLB`). This has been the standard way to programmatically control Outlook on Windows for over 20 years. It provides deep access to mail rules, categories, MAPI properties, and the full folder hierarchy.
 
 Mac Outlook does not support COM. Instead, it exposes an AppleScript dictionary that can be driven via the `osascript` command. The AppleScript interface covers the core operations — email, calendar, tasks — but does not expose rules, categories, or certain advanced MAPI features. This is a limitation of what Microsoft chose to include in Outlook for Mac's scripting dictionary, not a limitation of this project.
 
-The server is structured as two parallel implementations with identical tool names and signatures, so MCP clients see the same interface regardless of platform. Tools that are not available on a given platform are simply not registered.
+The server uses a single `server.py` with a unified tool surface. Each tool is an `async def` decorated with `@mcp.tool()`. Tools that require platform-specific APIs are conditionally registered in `set_backend()` — only the backend methods they call differ. MCP clients see the same interface regardless of platform.
 
 ## Requirements
 
 ### Windows
 
 - **Outlook Desktop (Classic)** — the `OUTLOOK.EXE` that comes with Microsoft 365 / Office. The new "modern" Outlook (`olk.exe`) does **not** support COM
-- **Python 3.12+** (x64 or ARM64)
+- **Python 3.13+** (x64 or ARM64)
 - **Outlook must be running** when the MCP server starts
 
-Both x64 and ARM64 Windows are supported. On ARM64, all dependencies (`pywin32`, `mcp`, `pydantic-core`, `cryptography`, `cffi`, `rpds-py`) have prebuilt `win_arm64` wheels — see the [ARM64 install notes](#arm64-windows) below for the one extra `pip` flag you need.
+Both x64 and ARM64 Windows are supported. On ARM64, all dependencies (`pywin32`, `mcp`, `pydantic-core`, `cryptography`, `cffi`, `rpds-py`) have prebuilt `win_arm64` wheels — see the [ARM64 install notes](#arm64-windows) below.
 
 #### Outlook "Programmatic Access" security prompts
 
@@ -89,18 +90,18 @@ You have three options:
 ### macOS
 
 - **Microsoft Outlook for Mac** — version 16.x or later
-- **Python 3.12+**
+- **Python 3.13+**
 - **Outlook must be running** when the MCP server starts
 
 #### Required macOS permissions
 
 The first time a tool runs, macOS will show **two permission prompts** that you must approve:
 
-1. **Privacy & Automation** — a system dialog asks: *"python3.12 wants to control Microsoft Outlook"*. Click **Allow** to let the server send AppleScript commands to Outlook.
+1. **Privacy & Automation** — a system dialog asks: *"python3 wants to control Microsoft Outlook"*. Click **Allow** to let the server send AppleScript commands to Outlook.
 
-2. **Accessibility** — to read your Exchange/M365 inbox, the server uses macOS UI scripting (System Events). This requires Accessibility access for `python3.12`:
+2. **Accessibility** — to read your Exchange/M365 inbox, the server uses macOS UI scripting (System Events). This requires Accessibility access for `python3`:
    - Open **System Settings > Privacy & Security > Accessibility**
-   - Find **python3.12** in the list (it appears after the first prompt)
+   - Find **python3** in the list (it appears after the first prompt)
    - Toggle it **on**
 
    Without Accessibility enabled, calendar, tasks, and local folder tools will work, but listing Exchange inbox messages will return empty results.
@@ -114,10 +115,12 @@ Both permissions are one-time setup — macOS remembers them for future sessions
 | Tool | Windows | macOS | Description |
 |------|:-------:|:-----:|-------------|
 | `send_email` | yes | yes | Send an email with To/CC/BCC, plain text or HTML body |
+| `draft_email` | yes | yes | Save an email as a draft without sending |
 | `list_emails` | yes | yes | List recent emails from any folder, with optional unread filter |
 | `read_email` | yes | yes | Read full email content by entry ID or subject search |
 | `search_emails` | yes | yes | Full-text search across email subjects and bodies |
 | `reply_email` | yes | yes | Reply or reply-all, preserving the conversation thread |
+| `draft_reply_email` | yes | yes | Save a reply as a draft without sending |
 | `mark_as_read` | yes | yes | Mark a specific email as read |
 | `mark_as_unread` | yes | yes | Mark a specific email as unread |
 | `move_email` | yes | yes | Move an email to Archive, Trash, or any folder |
@@ -153,27 +156,36 @@ Both permissions are one-time setup — macOS remembers them for future sessions
 | `list_attachments` | yes | yes | List all attachments on an email or calendar event |
 | `save_attachment` | yes | yes | Download an attachment to a local directory |
 
-### Categories, Rules, Out of Office (Windows only)
+### Out of Office
+
+| Tool | Windows | macOS | Description |
+|------|:-------:|:-----:|-------------|
+| `set_out_of_office` | yes | yes | Turn Out of Office auto-reply on or off |
+| `get_out_of_office` | yes | — | Check whether Out of Office auto-reply is on or off |
+
+### Categories, Rules, Accounts (Windows only)
 
 These tools rely on COM-specific APIs (MAPI property accessors, the Rules object model, and the Categories collection) that Outlook for Mac does not expose through AppleScript.
 
 | Tool | Windows | macOS | Description |
 |------|:-------:|:-----:|-------------|
+| `list_accounts` | yes | — | List all configured Outlook accounts |
 | `list_categories` | yes | — | List all available color categories in Outlook |
 | `set_category` | yes | — | Set or clear categories on any email, event, or task |
 | `list_rules` | yes | — | List all mail rules with enabled/disabled status |
 | `toggle_rule` | yes | — | Enable or disable a mail rule by name |
-| `get_out_of_office` | yes | — | Check whether Out of Office auto-reply is on or off |
 
 **Total: 33 tools on Windows, 26 tools on macOS.** (Some Windows-only capabilities — accounts, rules, categories, meeting response, OOF status query — are not exposed on macOS.)
 
 ## Architecture Details
 
-### Windows: COM Bridge (`backends/win/bridge.py`)
+### Windows: COM Backend (`backends/win/`)
+
+The Windows backend lives in `backends/win/`. The bridge (`bridge.py`) runs all Outlook COM operations on a dedicated STA thread.
 
 All Outlook COM operations run on a dedicated thread using the Single-Threaded Apartment (STA) model, as required by COM. The async MCP event loop dispatches tool calls to this thread via a queue and awaits results, keeping COM threading rules respected and the MCP protocol non-blocking.
 
-```
+```text
 MCP tool call (async)
   → bridge.call(func, args)
     → queued to STA thread
@@ -184,11 +196,13 @@ MCP tool call (async)
 
 Each tool's inner function receives the live `Outlook.Application` and `MAPI.Namespace` COM objects and works directly with the Outlook Object Model — `GetItemFromID`, `CreateItem`, `Items.Restrict` with DASL filters, and so on.
 
-### macOS: AppleScript Bridge (`backends/mac/bridge.py`)
+### macOS: AppleScript Backend (`backends/mac/`)
+
+The macOS backend lives in `backends/mac/`. The bridge (`bridge.py`) executes each tool call as a stateless `osascript` subprocess.
 
 Each tool call builds an AppleScript string and executes it as a subprocess via `osascript`. There is no persistent connection — every call is stateless.
 
-```
+```text
 MCP tool call (async)
   → build AppleScript string
     → asyncio.create_subprocess_exec("osascript", "-e", script)
@@ -214,7 +228,8 @@ git clone https://github.com/Aanerud/outlook-desktop-mcp.git
 cd outlook-desktop-mcp
 python -m venv .venv
 .venv\Scripts\activate
-pip install pywin32 "mcp[cli]" -e .
+pip install uv
+uv sync
 python .venv\Scripts\pywin32_postinstall.py -install
 ```
 
@@ -226,20 +241,17 @@ claude mcp add outlook-desktop -- powershell.exe -Command "& 'C:\path\to\outlook
 
 ### Windows (ARM64)
 
-The `[cli]` extra of `mcp` transitively pulls in `cryptography`, and pip's default resolver may pick a version that lacks a `win_arm64` wheel — which then fails to build because it requires a Rust toolchain plus OpenSSL. Install without the `cli` extra and force wheels-only resolution:
+On ARM64, use `uv` for reliable dependency resolution with prebuilt wheels:
 
 ```powershell
 git clone https://github.com/Aanerud/outlook-desktop-mcp.git
 cd outlook-desktop-mcp
-& "C:\Program Files\Python312-arm64\python.exe" -m venv .venv
+& "C:\Program Files\Python313-arm64\python.exe" -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install --only-binary=:all: pywin32 mcp
-python -m pip install --no-deps -e .
+pip install uv
+uv sync
 python .venv\Scripts\pywin32_postinstall.py -install
 ```
-
-The base `mcp` package is sufficient for running the stdio server — the `[cli]` extra is only needed for the `mcp` developer CLI tools (`mcp dev`, `mcp inspector`), which aren't used at runtime.
 
 Register from source the same way as x64:
 
@@ -254,7 +266,8 @@ git clone https://github.com/Aanerud/outlook-desktop-mcp.git
 cd outlook-desktop-mcp
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "mcp[cli]" -e .
+pip install uv
+uv sync
 ```
 
 Register from source:
@@ -269,18 +282,22 @@ Once registered, just talk to Claude naturally:
 
 - *"Show me my 10 most recent inbox emails"*
 - *"Read the email from Taylor about MLADS"*
-- *"Send an email to alice@example.com about the project update"*
+- *"Send an email to <alice@example.com> about the project update"*
+- *"Draft an email to <bob@example.com> about the meeting agenda"*
 - *"What's on my calendar this week?"*
-- *"Create a meeting with bob@example.com tomorrow at 2pm for 30 minutes"*
+- *"Create a meeting with <bob@example.com> tomorrow at 2pm for 30 minutes"*
 - *"Save the attachment from that email to my Downloads folder"*
 - *"Create a task to review the quarterly report, due Friday, high importance"*
 - *"Mark that email as read and move it to archive"*
+- *"Set Out of Office for next week"*
+- *"Reply to that email and save it as a draft"*
 
 Windows-only examples:
 
 - *"What categories do I have? Set this email to 'Follow-up'"*
 - *"List my mail rules"*
 - *"Am I set as Out of Office?"*
+- *"List my Outlook accounts"*
 
 ## Why Not Microsoft Graph?
 
@@ -296,7 +313,7 @@ Windows-only examples:
 
 ## Project Structure
 
-```
+```text
 outlook-desktop-mcp/
   src/outlook_desktop_mcp/
     entrypoint.py            # Platform detection → routes to correct server
@@ -324,6 +341,10 @@ outlook-desktop-mcp/
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the branching strategy and development setup.
+
+**Versioning:** This project uses CalVer (`YYYY.M.N`) — the `VERSION` file is the single source of truth, read by `uv-dynamic-versioning` at build time. CI auto-increments the patch number on every push to `main`.
+
+**Dev tasks:** The project uses [mise](https://mise.jdx.dev/) for task management. Run `mise install` to set up, then `mise run all` to lint, typecheck, and test.
 
 ## License
 
