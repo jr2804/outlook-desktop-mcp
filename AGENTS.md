@@ -124,13 +124,14 @@ codegraph, repowise, and grepai are not installed in this environment.
 
 _Always-injected_ — keep minimal. Everything else → `.agents/` files.
 
-1. Platform routing: `entrypoint.py` is the only place that switches on `sys.platform` (`darwin → server_mac`, else `server`). Tool modules never branch on OS.
+1. Platform routing: `entrypoint.py` is the only place that calls `current_platform()`; `darwin → backends/mac`, else `backends/win`. It injects the backend into the unified `server.py` via `set_backend(backend, platform=...)`.
 2. Tool contract: every MCP tool is an `async def` decorated with `@mcp.tool()`; its docstring is the LLM-facing contract — write detailed docstrings.
 3. Constants: Outlook enum values and folder-name mappings live only in `tools/_folder_constants.py` — never hard-code magic numbers elsewhere.
-4. Errors: never surface raw COM/AppleScript exceptions to the client — format them via `utils/errors.py`.
+4. Errors: never surface raw COM/AppleScript exceptions to the client — handled failures raise `BackendError`; unexpected exceptions are formatted via `Backend.format_unexpected_error()` (overridden by `ComBackend` for COM HRESULT detail).
 5. Tests: `*_com_test.py` requires a live Outlook; `*_mcp_test.py` is protocol-level; COM tests skip/no-op on Linux. `asyncio_mode = "auto"` — no per-test markers.
 6. Git: never push to `main` — feature branches PR into `preview`; `main` auto-publishes to PyPI.
-7. Dependencies: no new dependencies without explicit instruction (`pywin32` + `mcp` only).
+7. Dependencies: no new dependencies without explicit instruction (`pywin32`, `fastmcp`/`mcp`, `pydantic`).
+8. Platform independence: **no platform-specific code outside `backends/`** — bridges, type stubs, error formatters, and item formatters all live under `backends/win/` or `backends/mac/`.
 
 ## ⛔ No Patching
 

@@ -35,10 +35,11 @@ outlook-desktop-mcp.cmd mcp
 
 ## Where to dig deeper
 
-- `src/outlook_desktop_mcp/entrypoint.py` — platform routing (`darwin` → `server_mac`, else `server`)
-- `src/outlook_desktop_mcp/server.py` — Windows COM MCP server (30 tools)
-- `src/outlook_desktop_mcp/server_mac.py` — macOS AppleScript MCP server (23 tools)
-- `src/outlook_desktop_mcp/com_bridge.py` / `applescript_bridge.py` — transport layer
+- `src/outlook_desktop_mcp/entrypoint.py` — platform routing (`current_platform()` → `backends/{win,mac}`)
+- `src/outlook_desktop_mcp/server.py` — unified MCP tool surface (33 Win / 26 Mac tools)
+- `src/outlook_desktop_mcp/platform.py` — `Platform` StrEnum
+- `src/outlook_desktop_mcp/instructions.py` — `build_instructions(platform)`
+- `src/outlook_desktop_mcp/backends/{win,mac}/` — platform-specific bridges and helpers
 - `docs/` — user-facing documentation
 - Source-tree AGENTS.md files — local contracts (see root `AGENTS.md` index)
 

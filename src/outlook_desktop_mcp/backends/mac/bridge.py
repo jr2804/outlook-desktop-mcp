@@ -1,27 +1,33 @@
-"""
-AppleScript Bridge
+"""AppleScript Bridge
 ==================
-Runs Outlook automation via osascript subprocess calls on macOS.
+Runs Outlook automation via ``osascript`` subprocess calls on macOS.
 Each call is stateless — no persistent COM-like objects.
 
-Every tool builds an AppleScript string and passes it to bridge.run().
+Every tool builds an AppleScript string and passes it to ``bridge.run()``.
 """
+from __future__ import annotations
+
 import asyncio
 import logging
 
-logger = logging.getLogger("outlook_desktop_mcp.applescript_bridge")
+from outlook_desktop_mcp.backends.base.bridge import BridgeBase
+
+logger = logging.getLogger("outlook_desktop_mcp.backends.mac.bridge")
 
 STARTUP_TIMEOUT = 10
 SCRIPT_TIMEOUT = 30
 
 
-class AppleScriptBridge:
+class AppleScriptBridge(BridgeBase):
     """Manages AppleScript execution for Outlook on macOS."""
 
-    def __init__(self):
-        self._version: str | None = None
+    name = "applescript"
 
-    async def start(self):
+    def __init__(self) -> None:
+        self._version: str | None = None
+        self._running = False
+
+    async def start(self) -> None:
         """Verify Outlook is running and accessible. Call once at server startup."""
         try:
             self._version = await self.run(
@@ -29,6 +35,7 @@ class AppleScriptBridge:
                 timeout=STARTUP_TIMEOUT,
             )
             logger.info("AppleScript bridge ready. Outlook version: %s", self._version)
+            self._running = True
         except Exception as e:
             raise RuntimeError(
                 f"Cannot connect to Microsoft Outlook via AppleScript. "
@@ -52,9 +59,7 @@ class AppleScriptBridge:
         except asyncio.TimeoutError:
             proc.kill()
             await proc.communicate()
-            raise RuntimeError(
-                f"AppleScript timed out after {timeout}s"
-            )
+            raise RuntimeError(f"AppleScript timed out after {timeout}s")
 
         if proc.returncode != 0:
             err = stderr.decode("utf-8", errors="replace").strip()
@@ -67,6 +72,6 @@ class AppleScriptBridge:
         result = await self.run(script, timeout=timeout)
         return [line for line in result.split("\n") if line.strip()]
 
-    def stop(self):
+    async def stop(self) -> None:
         """No-op — AppleScript has no persistent resources to release."""
-        pass
+        self._running = False

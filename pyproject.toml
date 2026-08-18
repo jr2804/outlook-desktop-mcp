@@ -22,6 +22,7 @@ classifiers = [
 dependencies = [
     "pywin32>=310; sys_platform == 'win32'",
     "fastmcp",
+    "pydantic>=2",
 ]
 
 [project.urls]

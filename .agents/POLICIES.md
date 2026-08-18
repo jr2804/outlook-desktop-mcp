@@ -21,7 +21,7 @@ Always applicable. Boundaries, priorities, verification, checklist.
   `git push --force`) without explicit confirmation.
 - NEVER delete or move files without explicit instruction.
 - NEVER create temp files in project root. Use dedicated temp dir.
-- NEVER talk to Outlook outside the two bridges (`com_bridge.py` / `applescript_bridge.py`) — no Graph API, no OAuth.
+- NEVER talk to Outlook outside `backends/{win,mac}/` — no Graph API, no OAuth.
 
 ## Change constraints
 

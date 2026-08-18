@@ -1,7 +1,7 @@
-"""COM error formatting."""
+"""COM error formatting (Windows-only)."""
 import logging
 
-_logger = logging.getLogger("outlook_desktop_mcp.errors")
+_logger = logging.getLogger("outlook_desktop_mcp.backends.win.errors")
 
 
 def format_com_error(e: Exception) -> str:

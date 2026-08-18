@@ -165,11 +165,11 @@ These tools rely on COM-specific APIs (MAPI property accessors, the Rules object
 | `toggle_rule` | yes | — | Enable or disable a mail rule by name |
 | `get_out_of_office` | yes | — | Check whether Out of Office auto-reply is on or off |
 
-**Total: 29 tools on Windows, 22 tools on macOS.**
+**Total: 33 tools on Windows, 26 tools on macOS.** (Some Windows-only capabilities — accounts, rules, categories, meeting response, OOF status query — are not exposed on macOS.)
 
 ## Architecture Details
 
-### Windows: COM Bridge (`com_bridge.py`)
+### Windows: COM Bridge (`backends/win/bridge.py`)
 
 All Outlook COM operations run on a dedicated thread using the Single-Threaded Apartment (STA) model, as required by COM. The async MCP event loop dispatches tool calls to this thread via a queue and awaits results, keeping COM threading rules respected and the MCP protocol non-blocking.
 
@@ -184,7 +184,7 @@ MCP tool call (async)
 
 Each tool's inner function receives the live `Outlook.Application` and `MAPI.Namespace` COM objects and works directly with the Outlook Object Model — `GetItemFromID`, `CreateItem`, `Items.Restrict` with DASL filters, and so on.
 
-### macOS: AppleScript Bridge (`applescript_bridge.py`)
+### macOS: AppleScript Bridge (`backends/mac/bridge.py`)
 
 Each tool call builds an AppleScript string and executes it as a subprocess via `osascript`. There is no persistent connection — every call is stateless.
 
@@ -300,16 +300,16 @@ Windows-only examples:
 outlook-desktop-mcp/
   src/outlook_desktop_mcp/
     entrypoint.py            # Platform detection → routes to correct server
-    server.py                # Windows MCP server (29 tools, COM automation)
-    server_mac.py            # macOS MCP server (22 tools, AppleScript)
-    com_bridge.py            # Async-to-COM threading bridge (Windows)
-    applescript_bridge.py    # Async osascript execution (macOS)
+    server.py                # Unified MCP tool surface (33 Win / 26 Mac)
+    platform.py              # Platform StrEnum + current_platform()
+    instructions.py          # build_instructions(platform)
+    models.py                # Pydantic response models
+    backends/
+      base/                  # Backend ABC, BackendError, BridgeBase
+      win/                   # Windows: COM bridge, ComBackend, errors, formatting, _types
+      mac/                   # macOS: AppleScript bridge, AppleScriptBackend, helpers
     tools/
-      _folder_constants.py   # Outlook enums and constants (Windows)
-    utils/
-      formatting.py          # Email/event/task data extraction (Windows)
-      errors.py              # COM error formatting (Windows)
-      applescript_helpers.py # AppleScript escaping, date formatting (macOS)
+      _folder_constants.py   # Outlook enums and constants (shared)
   tests/
     phase1_com_test.py       # Email COM validation
     phase3_mcp_test.py       # Email MCP test

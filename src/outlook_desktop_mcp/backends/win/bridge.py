@@ -1,26 +1,33 @@
-"""
-COM Threading Bridge
+"""COM Threading Bridge
 ====================
 Runs all Outlook COM calls on a dedicated STA (Single-Threaded Apartment)
 thread so the async MCP event loop never touches COM objects directly.
 
-Every COM function passed to bridge.call() receives (outlook, namespace, ...)
+Every COM function passed to ``bridge.call()`` receives ``(outlook, namespace, ...)``
 as its first two arguments — the live COM objects that only exist on the
 COM thread.
 """
-import threading
-import queue
+from __future__ import annotations
+
 import asyncio
-import sys
 import logging
+import queue
+import threading
 
-logger = logging.getLogger("outlook_desktop_mcp.com_bridge")
+from outlook_desktop_mcp.backends.base.bridge import BridgeBase
+
+logger = logging.getLogger("outlook_desktop_mcp.backends.win.bridge")
+
+COM_OPERATION_TIMEOUT = 60  # seconds
+COM_INIT_TIMEOUT = 15  # seconds
 
 
-class OutlookBridge:
+class OutlookBridge(BridgeBase):
     """Manages a dedicated COM thread for Outlook operations."""
 
-    def __init__(self):
+    name = "com"
+
+    def __init__(self) -> None:
         self._thread: threading.Thread | None = None
         self._request_queue: queue.Queue = queue.Queue()
         self._outlook = None
@@ -28,22 +35,24 @@ class OutlookBridge:
         self._ready = threading.Event()
         self._shutdown = threading.Event()
         self._init_error: Exception | None = None
+        self._running = False
 
-    def start(self):
+    async def start(self) -> None:
         """Start the COM thread. Call once at server startup."""
         self._thread = threading.Thread(
             target=self._com_thread_main, daemon=True, name="outlook-com"
         )
         self._thread.start()
-        if not self._ready.wait(timeout=15):
+        if not self._ready.wait(timeout=COM_INIT_TIMEOUT):
             if self._init_error:
                 raise self._init_error
             raise RuntimeError(
-                "Outlook COM thread failed to initialize within 15s. "
+                f"Outlook COM thread failed to initialize within {COM_INIT_TIMEOUT}s. "
                 "Is Outlook Desktop (Classic) running?"
             )
+        self._running = True
 
-    def _com_thread_main(self):
+    def _com_thread_main(self) -> None:
         """Main loop for the COM thread."""
         # ty: ignore[unresolved-import]
         import pythoncom
@@ -83,22 +92,21 @@ class OutlookBridge:
             pythoncom.CoUninitialize()
 
     async def call(self, func, *args, **kwargs):
-        """
-        Schedule a function to run on the COM thread and await its result.
+        """Schedule a function to run on the COM thread and await its result.
 
-        The function signature must be: func(outlook, namespace, *args, **kwargs)
+        The function signature must be: ``func(outlook, namespace, *args, **kwargs)``.
         """
         result_event = threading.Event()
-        result_holder = {}
+        result_holder: dict = {}
         self._request_queue.put((func, args, kwargs, result_event, result_holder))
 
         loop = asyncio.get_running_loop()
         signaled = await loop.run_in_executor(
-            None, lambda: result_event.wait(timeout=60)
+            None, lambda: result_event.wait(timeout=COM_OPERATION_TIMEOUT)
         )
         if not signaled:
             raise TimeoutError(
-                "Outlook COM operation timed out after 60 seconds. "
+                f"Outlook COM operation timed out after {COM_OPERATION_TIMEOUT} seconds. "
                 "Outlook may be waiting for user input (e.g., a dialog box)."
             )
 
@@ -106,8 +114,9 @@ class OutlookBridge:
             raise result_holder["error"]
         return result_holder.get("value")
 
-    def stop(self):
+    async def stop(self) -> None:
         """Signal the COM thread to shut down."""
         self._shutdown.set()
         if self._thread:
             self._thread.join(timeout=5)
+        self._running = False
