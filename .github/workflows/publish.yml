@@ -1,11 +1,30 @@
 name: Publish to PyPI
 
+# Disabled on forks. This workflow ships from upstream
+# (Aanerud/outlook-desktop-mcp) so PyPI OIDC trust, the `main` environment,
+# and the project registration are all bound to that repository. Forks
+# inheriting this workflow through rebase/merge would fail with a PyPI
+# 403/Forbidden on every push to `main`, so we explicitly skip.
+#
+# To re-enable on a non-fork that owns the PyPI project, change the
+# guard to `github.repository == '<owner>/<repo>'`.
+
 on:
   push:
     branches: [main]
 
+# Skip the entire workflow on forks — PyPI publishing is bound to the
+# upstream repository's OIDC trust + `main` environment, so fork pushes
+# cannot publish and would otherwise surface as failed deployments.
+# The `concurrency` group prevents overlapping publishes if upstream ever
+# re-enables for a fork that owns its own PyPI project.
+concurrency:
+  group: publish-main
+  cancel-in-progress: false
+
 jobs:
   publish:
+    if: github.event.repository.fork == false
     runs-on: ubuntu-latest
     environment: main
     permissions:
