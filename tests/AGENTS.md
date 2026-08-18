@@ -9,7 +9,7 @@ without Outlook, and COM integration tests that require a live Outlook desktop a
 
 - `conftest.py` — shared fixtures.
 - `ref/MSOUTL.OLB` — COM type library reference (local, not committed).
-- Naming: `*_com_test.py` = COM integration, `*_mcp_test.py` = MCP protocol, `test_*.py` = unit.
+- Naming: `test_*_com.py` = COM integration, `test_*_mcp.py` = MCP protocol, `test_*.py` = unit.
 
 ## Local Contracts
 
@@ -20,7 +20,7 @@ without Outlook, and COM integration tests that require a live Outlook desktop a
 ## Verification
 
 - `uv run pytest` (repo root) — full suite.
-- `outlook-desktop-mcp.cmd test` — runs `tests/phase1_com_test.py`.
+- `outlook-desktop-mcp.cmd test` — runs `tests/test_email_com.py`.
 
 ## Child DOX Index
 

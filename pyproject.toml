@@ -46,6 +46,15 @@ packages = ["src/outlook_desktop_mcp"]
 source = "uv-dynamic-versioning"
 
 [tool.uv-dynamic-versioning]
+# Versioning scheme: CalVer `YYYY.M.N`.
+# - `VERSION` is the source of truth (a single line, e.g. "2026.8.3").
+# - Git tags of the form `vYYYY.M.N` are recognised by `tag-pattern` and
+#   override the file value at release time.
+# - A GitHub Action (`.github/workflows/version-bump.yml`) auto-increments
+#   the patch (N) on every push to `main`, rolling the month/year forward
+#   when they change.
+from_file = { source = "VERSION" }
+tag-pattern = "^v(?P<version>\\d+\\.\\d+\\.\\d+)$"
 fallback-version = "0.0.0"
 
 [dependency-groups]

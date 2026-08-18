@@ -22,3 +22,5 @@ Kept compact — agents hallucinate less when they know where definitions live.
 | Platform routing | `src/outlook_desktop_mcp/entrypoint.py` | `current_platform()` → `Platform` → `backends/{win,mac}` |
 | Platform StrEnum | `src/outlook_desktop_mcp/platform.py` | `Platform.DARWIN`, `Platform.WINDOWS` |
 | Per-platform instructions | `src/outlook_desktop_mcp/instructions.py` | `build_instructions(platform)` |
+| CalVer version file | `VERSION` | `YYYY.M.N` |
+| Version bump script | `scripts/bump_version.py` | `next_version(today, current)` |

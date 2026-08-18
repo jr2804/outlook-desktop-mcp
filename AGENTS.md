@@ -97,6 +97,7 @@ When the user requests a durable behavior change, record it here or in the relev
 | ------ | ------- |
 | `src/outlook_desktop_mcp/AGENTS.md` | Core package — platform routing, bridge pattern, tool contract |
 | `tests/AGENTS.md` | Test suite — COM integration vs MCP protocol conventions |
+| `scripts/` | Leaf — `bump_version.py` (CalVer); no child AGENTS.md |
 | `docs/` | Leaf — reference material, no child AGENTS.md |
 
 ## .agents/ files — demand-loaded, not always injected
@@ -136,6 +137,7 @@ _Always-injected_ — keep minimal. Everything else → `.agents/` files.
 6. Git: never push to `main` — feature branches PR into `preview`; `main` auto-publishes to PyPI.
 7. Dependencies: no new dependencies without explicit instruction (`pywin32`, `fastmcp`/`mcp`, `pydantic`).
 8. Platform independence: **no platform-specific code outside `backends/`** — bridges, type stubs, error formatters, and item formatters all live under `backends/win/` or `backends/mac/`.
+9. Versioning: CalVer `YYYY.M.N` lives in `VERSION` (single source of truth); `uv-dynamic-versioning` reads it via `pyproject.toml`. `.github/workflows/version-bump.yml` increments `N` on every push to `main`.
 
 ## ⛔ No Patching
 

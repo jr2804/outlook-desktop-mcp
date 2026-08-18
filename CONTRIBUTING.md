@@ -47,7 +47,7 @@ With Outlook Desktop (Classic) open:
 outlook-desktop-mcp.cmd test
 
 # MCP protocol test
-.venv\Scripts\python tests\phase3_mcp_test.py
+.venv\Scripts\python tests\test_email_mcp.py
 ```
 
 ## Adding New Tools

@@ -311,12 +311,12 @@ outlook-desktop-mcp/
     tools/
       _folder_constants.py   # Outlook enums and constants (shared)
   tests/
-    phase1_com_test.py       # Email COM validation
-    phase3_mcp_test.py       # Email MCP test
-    calendar_com_test.py     # Calendar COM validation
-    calendar_mcp_test.py     # Calendar MCP test
-    extras_com_test.py       # Tasks/attachments/categories/rules/OOF COM test
-    extras_mcp_test.py       # Tasks/attachments/categories/rules/OOF MCP test
+    test_email_com.py         # Email COM validation
+    test_email_mcp.py         # Email MCP test
+    test_calendar_com.py      # Calendar COM validation
+    test_calendar_mcp.py      # Calendar MCP test
+    test_extras_com.py        # Tasks/attachments/categories/rules/OOF COM test
+    test_extras_mcp.py        # Tasks/attachments/categories/rules/OOF MCP test
   outlook-desktop-mcp.cmd   # Windows launcher script
   pyproject.toml
 ```

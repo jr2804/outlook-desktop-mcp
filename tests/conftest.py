@@ -20,9 +20,9 @@ from outlook_desktop_mcp.backends.base import Backend
 # manual validation scripts (by the upstream author) that require Windows/macOS
 # and a running Outlook. They are skipped on platforms without COM.
 _COM_ONLY_MODULES = {
-    "tests.phase1_com_test",
-    "tests.calendar_com_test",
-    "tests.extras_com_test",
+    "tests.test_email_com",
+    "tests.test_calendar_com",
+    "tests.test_extras_com",
 }
 
 _UNAVAILABLE_MSG = (

@@ -18,7 +18,7 @@ set PYTHON=uv run --directory %~dp0
 if "%1"=="mcp" (
     %PYTHON% outlook-desktop-mcp
 ) else if "%1"=="test" (
-    %PYTHON% tests\phase1_com_test.py
+    %PYTHON% tests\test_email_com.py
 ) else (
     echo Usage: outlook-desktop-mcp.cmd [mcp^|test] 1>&2
     exit /b 1

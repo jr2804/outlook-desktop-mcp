@@ -1,0 +1,47 @@
+name: version-bump
+
+# Auto-increment the CalVer `VERSION` file on every push to `main`.
+# The file is read by `uv-dynamic-versioning` (via `pyproject.toml`'s
+# `[tool.uv-dynamic-versioning].from_file`), so each push produces a fresh
+# monotonic patch number that downstream packaging picks up automatically.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Compute next CalVer
+        id: compute
+        run: |
+          NEW_VERSION=$(python scripts/bump_version.py)
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Next version: $NEW_VERSION"
+
+      - name: Write VERSION
+        run: python scripts/bump_version.py --write
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VERSION
+          git commit -m "🔖 chore(version): bump to ${{ steps.compute.outputs.version }}"
+          git push
