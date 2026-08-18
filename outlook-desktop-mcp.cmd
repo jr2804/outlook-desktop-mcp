@@ -6,17 +6,19 @@ REM   outlook-desktop-mcp.cmd test   Run COM validation tests
 
 setlocal
 
-set PYTHON=%~dp0.venv\Scripts\python.exe
+set VENV=%~dp0.venv
+uv sync -U --dev --directory %~dp0
 
-if not exist "%PYTHON%" (
-    echo ERROR: Virtual environment not found. Run setup first. 1>&2
-    exit /b 1
+if not exist "%VENV%" (
+   echo ERROR: Virtual environment not found. Run setup first. 1>&2
+   exit /b 1
 )
+set PYTHON=uv run --directory %~dp0
 
 if "%1"=="mcp" (
-    "%PYTHON%" -m outlook_desktop_mcp.server
+    %PYTHON% outlook-desktop-mcp
 ) else if "%1"=="test" (
-    "%PYTHON%" tests\phase1_com_test.py
+    %PYTHON% tests\phase1_com_test.py
 ) else (
     echo Usage: outlook-desktop-mcp.cmd [mcp^|test] 1>&2
     exit /b 1
