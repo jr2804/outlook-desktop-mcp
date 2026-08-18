@@ -1,0 +1,24 @@
+# Changes here will be overwritten by Copier
+_commit: 2026.08.9
+_src_path: https://codeberg.org/jr2804/copier-uv-plus.git
+project_title: Outlook Desktop MCP
+project_slug: outlook-desktop-mcp
+package_slug: outlook_desktop_mcp
+author: Andreas Martin Aanerud
+author_email: aaanerud@microsoft.com
+description: Outlook Desktop as an MCP server — Windows (COM) and macOS (AppleScript). No Graph API, no Entra app registration — just your local Outlook.
+repo_url: https://github.com/aaanerud/outlook-desktop-mcp
+license: AGPL-3.0
+python_version: 3.13
+layout: src
+enable_cli: False
+enable_docs: False
+include_github_actions: True
+release_versioning: tag
+auto_setup_mise: False
+auto_sync_uv: skip
+include_format_tasks: True
+include_lint_tasks: True
+include_quality_tasks: True
+include_mcp_tasks: True
+skill_categories: slop,codebase,dev,tracking,general,coding,docs
