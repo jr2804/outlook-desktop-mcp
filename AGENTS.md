@@ -115,8 +115,12 @@ When the user requests a durable behavior change, record it here or in the relev
 
 | Tool/Skill/MCP | When                    | Purpose                                           |
 | -------------- | ----------------------- | ------------------------------------------------- |
+| `mise` tasks   | Build/quality           | `mise run lint` / `typecheck` / `test` / `all` (config in `.config/mise/`) |
 | `bd` / beads   | Issue tracking          | Task lifecycle, dependencies, session persistence |
 | `rg` / `tree-cli` | Listing files        | Generate tree views on demand: `rg --files \| tree-cli --fromfile` |
+
+Template: project is built on [copier-uv-plus](https://codeberg.org/jr2804/copier-uv-plus)
+(`.copier-answers.yml` is copier-owned — never edit by hand; update via `copier update --trust --defaults`).
 
 codegraph, repowise, and grepai are not installed in this environment.
 
