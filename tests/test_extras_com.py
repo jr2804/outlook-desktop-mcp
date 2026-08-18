@@ -4,44 +4,40 @@ Outlook Desktop MCP - Tasks/Attachments/OOO/Rules/Categories COM Validation
 Standalone COM tests for the new tool modules.
 Requires Classic Outlook (Desktop) to be running.
 """
-import sys
+
 import os
-import time
+import sys
 from datetime import datetime, timedelta
+from typing import Any
 
 
-def log(msg):
+def log(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
 
 
 _created_task_id = None
 
 
-def test_connect():
-    import pythoncom
-    import win32com.client
-    pythoncom.CoInitialize()
-    outlook = win32com.client.Dispatch("Outlook.Application")
-    namespace = outlook.GetNamespace("MAPI")
+def test_connect(outlook: Any, namespace: Any) -> None:
     log(f"  Connected: {namespace.DefaultStore.DisplayName}")
-    return outlook, namespace
 
 
 # ===== TASKS =====
 
-def test_list_tasks(namespace):
+
+def test_list_tasks(namespace: Any) -> None:
     """List tasks from the default Tasks folder."""
     tasks_folder = namespace.GetDefaultFolder(13)
     items = tasks_folder.Items
     log(f"  Tasks folder: {items.Count} items")
     for i in range(min(5, items.Count)):
         item = items.Item(i + 1)
-        log(f"    [{i+1}] {item.Subject} (Status: {item.Status}, Complete: {item.Complete})")
+        log(f"    [{i + 1}] {item.Subject} (Status: {item.Status}, Complete: {item.Complete})")
 
 
-def test_create_task(outlook):
+def test_create_task(outlook: Any) -> None:
     """Create a test task."""
-    global _created_task_id
+    global _created_task_id  # noqa: PLW0603
     task = outlook.CreateItem(3)  # olTaskItem
     task.Subject = "MCP Test Task - COM Validation"
     task.Body = "Automated test task."
@@ -53,9 +49,9 @@ def test_create_task(outlook):
     log(f"  Created: '{task.Subject}' (EntryID: {task.EntryID[:40]}...)")
 
 
-def test_complete_task(namespace):
+def test_complete_task(namespace: Any) -> None:
     """Mark the test task as complete."""
-    global _created_task_id
+    global _created_task_id  # noqa: PLW0602
     if not _created_task_id:
         log("  SKIP: No task created")
         return
@@ -66,9 +62,9 @@ def test_complete_task(namespace):
     log(f"  Completed: '{item.Subject}' (PercentComplete: {item.PercentComplete})")
 
 
-def test_delete_task(namespace):
+def test_delete_task(namespace: Any) -> None:
     """Delete the test task."""
-    global _created_task_id
+    global _created_task_id  # noqa: PLW0603
     if not _created_task_id:
         log("  SKIP: No task created")
         return
@@ -81,8 +77,9 @@ def test_delete_task(namespace):
 
 # ===== ATTACHMENTS =====
 
-def test_list_attachments(namespace):
-    """Find an email with attachments and list them."""
+
+def _find_attachment_email(namespace: Any) -> str | None:
+    """Return the EntryID of the most recent inbox email with attachments."""
     inbox = namespace.GetDefaultFolder(6)
     items = inbox.Items
     items.Sort("[ReceivedTime]", True)
@@ -90,23 +87,32 @@ def test_list_attachments(namespace):
     for i in range(min(50, items.Count)):
         item = items.Item(i + 1)
         if item.Attachments.Count > 0:
-            log(f"  Email: '{item.Subject}' has {item.Attachments.Count} attachment(s):")
-            for j in range(item.Attachments.Count):
-                att = item.Attachments.Item(j + 1)
-                log(f"    [{j+1}] {att.FileName} ({att.Size} bytes)")
             return item.EntryID
-    log("  No emails with attachments found in top 50")
     return None
 
 
-def test_save_attachment(namespace, entry_id):
+def test_list_attachments(namespace: Any) -> None:
+    """Find an email with attachments and list them."""
+    entry_id = _find_attachment_email(namespace)
+    if not entry_id:
+        log("  No emails with attachments found in top 50")
+        return
+    item = namespace.GetItemFromID(entry_id)
+    log(f"  Email: '{item.Subject}' has {item.Attachments.Count} attachment(s):")
+    for j in range(item.Attachments.Count):
+        att = item.Attachments.Item(j + 1)
+        log(f"    [{j + 1}] {att.FileName} ({att.Size} bytes)")
+
+
+def test_save_attachment(namespace: Any) -> None:
     """Save an attachment to a temp directory."""
+    entry_id = _find_attachment_email(namespace)
     if not entry_id:
         log("  SKIP: No email with attachments found")
         return
     item = namespace.GetItemFromID(entry_id)
     att = item.Attachments.Item(1)
-    temp_dir = os.path.join(os.environ.get("TEMP", "/tmp"), "outlook_mcp_test")
+    temp_dir = os.path.join(os.environ.get("TEMP", "/tmp"), "outlook_mcp_test")  # noqa: S108
     os.makedirs(temp_dir, exist_ok=True)
     save_path = os.path.join(temp_dir, att.FileName)
     att.SaveAsFile(save_path)
@@ -116,12 +122,13 @@ def test_save_attachment(namespace, entry_id):
     # Clean up
     if exists:
         os.remove(save_path)
-        log(f"  Cleaned up test file")
+        log("  Cleaned up test file")
 
 
 # ===== CATEGORIES =====
 
-def test_list_categories(namespace):
+
+def test_list_categories(namespace: Any) -> None:
     """List available categories."""
     categories = namespace.Categories
     log(f"  Available categories: {categories.Count}")
@@ -130,7 +137,7 @@ def test_list_categories(namespace):
         log(f"    - {cat.Name} (Color: {cat.Color})")
 
 
-def test_set_category(namespace):
+def test_set_category(namespace: Any) -> None:
     """Set a category on the most recent inbox email, then remove it."""
     inbox = namespace.GetDefaultFolder(6)
     items = inbox.Items
@@ -153,19 +160,21 @@ def test_set_category(namespace):
 
 # ===== RULES =====
 
-def test_list_rules(namespace):
+
+def test_list_rules(namespace: Any) -> None:
     """List mail rules."""
     store = namespace.DefaultStore
     rules = store.GetRules()
     log(f"  Total rules: {rules.Count}")
     for i in range(min(10, rules.Count)):
         rule = rules.Item(i + 1)
-        log(f"    [{i+1}] '{rule.Name}' (Enabled: {rule.Enabled})")
+        log(f"    [{i + 1}] '{rule.Name}' (Enabled: {rule.Enabled})")
 
 
 # ===== OUT OF OFFICE =====
 
-def test_get_ooo_status(namespace):
+
+def test_get_ooo_status(namespace: Any) -> None:
     """Check Out of Office status via Store property."""
     store = namespace.DefaultStore
     try:
@@ -190,14 +199,19 @@ def test_get_ooo_status(namespace):
             log(f"  Alternative also failed: {e2}")
 
 
-def main():
+def main() -> None:
     log("=" * 60)
     log("Outlook Desktop MCP - Extras COM Validation")
     log("=" * 60)
 
     log("\n--- Connect ---")
     try:
-        outlook, namespace = test_connect()
+        import pythoncom  # noqa: PLC0415
+        import win32com.client  # noqa: PLC0415
+
+        pythoncom.CoInitialize()
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        namespace = outlook.GetNamespace("MAPI")
         log("  PASS")
     except Exception as e:
         log(f"  FAIL: {e}")
@@ -209,7 +223,7 @@ def main():
         ("Complete Task", lambda: test_complete_task(namespace)),
         ("Delete Task", lambda: test_delete_task(namespace)),
         ("List Attachments", lambda: test_list_attachments(namespace)),
-        ("Save Attachment", lambda: test_save_attachment(namespace, _att_entry_id)),
+        ("Save Attachment", lambda: test_save_attachment(namespace)),
         ("List Categories", lambda: test_list_categories(namespace)),
         ("Set/Restore Category", lambda: test_set_category(namespace)),
         ("List Rules", lambda: test_list_rules(namespace)),
@@ -217,10 +231,10 @@ def main():
     ]
 
     # Pre-run: find an email with attachments for test 6
-    global _att_entry_id
+    global _att_entry_id  # noqa: PLW0603
     log("\n--- Pre-scan: Find email with attachments ---")
     try:
-        _att_entry_id = test_list_attachments(namespace)
+        _att_entry_id = _find_attachment_email(namespace)
         log("  DONE")
     except Exception as e:
         _att_entry_id = None
@@ -247,7 +261,8 @@ def main():
     log(f"Results: {passed}/{total} passed")
     log("=" * 60)
 
-    import pythoncom
+    import pythoncom  # noqa: PLC0415
+
     pythoncom.CoUninitialize()
     sys.exit(0 if passed == total else 1)
 

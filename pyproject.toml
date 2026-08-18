@@ -72,6 +72,10 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["src", "tests"]
 cache_dir = "tests/test-cache"
+filterwarnings = [
+    # Third-party: pydantic_settings cannot resolve FastMCP's forward-ref 'lifespan' field
+    "ignore:Field 'lifespan' has an incomplete definition:UserWarning",
+]
 
 [tool.pytest-cov]
 addopts = "--cov=outlook_desktop_mcp --cov-report=term-missing --cov-report=html --cov-report=xml"

@@ -1,4 +1,4 @@
-"""
+r"""
 Outlook Desktop MCP - Phase 1 COM Validation
 =============================================
 Standalone script that validates all Outlook COM operations before building
@@ -6,31 +6,32 @@ the MCP layer. Requires Classic Outlook (Desktop) to be running.
 
 Run: .venv\\Scripts\\python tests\\phase1_com_test.py
 """
+
 import sys
 import time
+from typing import Any
 
-def log(msg):
+
+def log(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
-def test_connect():
+def test_connect(outlook: Any, namespace: Any) -> None:
     """Test 1: Connect to running Outlook via COM."""
-    import pythoncom
-    import win32com.client
-
-    pythoncom.CoInitialize()
-    outlook = win32com.client.Dispatch("Outlook.Application")
-    namespace = outlook.GetNamespace("MAPI")
     log(f"  Connected to store: {namespace.DefaultStore.DisplayName}")
     log(f"  Current user: {namespace.CurrentUser.Name}")
-    return outlook, namespace
 
 
-def test_list_folders(namespace):
+def test_list_folders(namespace: Any) -> None:
     """Test 2: Enumerate default folders and their item counts."""
     folder_map = {
-        "Inbox": 6, "Sent Mail": 5, "Deleted Items": 3,
-        "Drafts": 16, "Calendar": 9, "Tasks": 13, "Junk": 23,
+        "Inbox": 6,
+        "Sent Mail": 5,
+        "Deleted Items": 3,
+        "Drafts": 16,
+        "Calendar": 9,
+        "Tasks": 13,
+        "Junk": 23,
     }
     for name, enum_val in folder_map.items():
         try:
@@ -40,7 +41,7 @@ def test_list_folders(namespace):
             log(f"  {name}: SKIP ({e})")
 
 
-def test_read_inbox(namespace, count=5):
+def test_read_inbox(namespace: Any, count: int = 5) -> None:
     """Test 3: Read top N emails from Inbox (newest first)."""
     inbox = namespace.GetDefaultFolder(6)
     items = inbox.Items
@@ -48,16 +49,30 @@ def test_read_inbox(namespace, count=5):
     actual = min(count, items.Count)
     for i in range(actual):
         item = items.Item(i + 1)  # 1-indexed
-        log(f"  [{i+1}] {item.Subject}")
-        log(f"       From: {item.SenderEmailAddress}")
-        log(f"       Date: {item.ReceivedTime}")
-        log(f"       EntryID: {item.EntryID[:40]}...")
-        log(f"       UnRead: {item.UnRead}")
+        try:
+            log(f"  [{i + 1}] {item.Subject}")
+            try:
+                sender = item.SenderEmailAddress
+            except Exception:
+                # SenderEmailAddress can be blocked by the Outlook Object Model Guard;
+                # report items (e.g. "Undeliverable") may expose neither property.
+                try:
+                    sender = item.SenderName
+                except Exception:
+                    sender = "(unavailable)"
+            log(f"       From: {sender}")
+            log(f"       Date: {item.ReceivedTime}")
+            log(f"       EntryID: {item.EntryID[:40]}...")
+            log(f"       UnRead: {item.UnRead}")
+        except Exception as e:
+            # Non-mail items (delivery reports, meeting notices) may not expose
+            # standard mail properties via dynamic dispatch.
+            log(f"  [{i + 1}] (property access failed: {e})")
     if actual == 0:
         log("  (inbox is empty)")
 
 
-def test_filter_unread(namespace):
+def test_filter_unread(namespace: Any) -> None:
     """Test 4: Use Restrict to find unread emails in Inbox."""
     inbox = namespace.GetDefaultFolder(6)
     unread = inbox.Items.Restrict("[UnRead] = True")
@@ -65,10 +80,9 @@ def test_filter_unread(namespace):
     if unread.Count > 0:
         first = unread.Item(1)
         log(f"  First unread: {first.Subject}")
-    return unread.Count
 
 
-def test_send_email(outlook):
+def test_send_email(outlook: Any) -> None:
     """Test 5: Create and send a test email to self."""
     mail = outlook.CreateItem(0)  # 0 = olMailItem
     mail.To = "user@example.com"
@@ -82,7 +96,7 @@ def test_send_email(outlook):
     log("  Email sent to user@example.com")
 
 
-def test_mark_read_unread(namespace):
+def test_mark_read_unread(namespace: Any) -> None:
     """Test 6: Find first unread, mark as read, then restore to unread."""
     inbox = namespace.GetDefaultFolder(6)
     unread = inbox.Items.Restrict("[UnRead] = True")
@@ -92,17 +106,17 @@ def test_mark_read_unread(namespace):
     item = unread.Item(1)
     subject = item.Subject
     log(f"  Target: '{subject}'")
-    log(f"  Marking as read...")
+    log("  Marking as read...")
     item.UnRead = False
     item.Save()
     log(f"  UnRead is now: {item.UnRead}")
-    log(f"  Restoring to unread...")
+    log("  Restoring to unread...")
     item.UnRead = True
     item.Save()
     log(f"  UnRead is now: {item.UnRead}")
 
 
-def test_move_to_archive(namespace):
+def test_move_to_archive(namespace: Any) -> None:
     """Test 7: Find Archive folder and move oldest inbox email there, then move it back."""
     inbox = namespace.GetDefaultFolder(6)
     root = namespace.DefaultStore.GetRootFolder()
@@ -135,12 +149,12 @@ def test_move_to_archive(namespace):
     log(f"  Archive now has {archive.Items.Count} items")
 
     # Move it back to inbox
-    log(f"  Moving it back to Inbox...")
+    log("  Moving it back to Inbox...")
     moved_item.Move(inbox)
-    log(f"  Restored to Inbox")
+    log("  Restored to Inbox")
 
 
-def test_search(namespace, keyword="test"):
+def test_search(namespace: Any, keyword: str = "test") -> None:
     """Test 8: Search Inbox for emails containing keyword in Subject using DASL."""
     inbox = namespace.GetDefaultFolder(6)
     safe_keyword = keyword.replace("'", "''")
@@ -152,7 +166,7 @@ def test_search(namespace, keyword="test"):
         log(f"  First match: {first.Subject}")
 
 
-def main():
+def main() -> None:
     log("=" * 60)
     log("Outlook Desktop MCP - Phase 1 COM Validation")
     log("=" * 60)
@@ -161,7 +175,12 @@ def main():
     # Test 1 must succeed for all others to run
     log("--- Test 1: Connect to Outlook COM ---")
     try:
-        outlook, namespace = test_connect()
+        import pythoncom  # noqa: PLC0415
+        import win32com.client  # noqa: PLC0415
+
+        pythoncom.CoInitialize()
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        namespace = outlook.GetNamespace("MAPI")
         log("  PASS")
     except Exception as e:
         log(f"  FAIL: {e}")
@@ -196,7 +215,8 @@ def main():
     log(f"Results: {passed}/{total} passed")
     log("=" * 60)
 
-    import pythoncom
+    import pythoncom  # noqa: PLC0415
+
     pythoncom.CoUninitialize()
 
     sys.exit(0 if passed == total else 1)

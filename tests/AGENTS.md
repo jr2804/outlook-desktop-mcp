@@ -14,6 +14,7 @@ without Outlook, and COM integration tests that require a live Outlook desktop a
 ## Local Contracts
 
 - COM tests require a live Outlook; they skip/no-op on Linux — never assert success when Outlook is unavailable.
+- Mutating COM tests (send/create/update/delete/move/mark/set — see `_WRITE_TEST_NAMES` in `conftest.py`) are skipped by default so parallel Outlook work is not disturbed. Opt in with `OUTLOOK_MCP_WRITE_TESTS=1` (or `true`). Read-only tests (list/read/search/get) always run.
 - Async: `asyncio_mode = "auto"` (set in `pyproject.toml`) — do not add per-test asyncio markers.
 - New tools need coverage — see `CONTRIBUTING.md` "Adding New Tools".
 

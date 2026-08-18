@@ -1,4 +1,4 @@
-"""
+r"""
 Outlook Desktop MCP - Calendar COM Validation
 ===============================================
 Standalone script that validates all calendar COM operations before
@@ -6,12 +6,13 @@ building the MCP layer. Requires Classic Outlook (Desktop) to be running.
 
 Run: .venv\\Scripts\\python tests\\calendar_com_test.py
 """
+
 import sys
-import time
 from datetime import datetime, timedelta
+from typing import Any
 
 
-def log(msg):
+def log(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
 
 
@@ -19,19 +20,12 @@ def log(msg):
 _created_entry_id = None
 
 
-def test_connect():
+def test_connect(outlook: Any, namespace: Any) -> None:
     """Test 0: Connect to running Outlook via COM."""
-    import pythoncom
-    import win32com.client
-
-    pythoncom.CoInitialize()
-    outlook = win32com.client.Dispatch("Outlook.Application")
-    namespace = outlook.GetNamespace("MAPI")
     log(f"  Connected to store: {namespace.DefaultStore.DisplayName}")
-    return outlook, namespace
 
 
-def test_list_upcoming_events(namespace, days=7):
+def test_list_upcoming_events(namespace: Any, days: int = 7) -> None:
     """Test 1: List upcoming events for the next N days, handling recurrences."""
     calendar = namespace.GetDefaultFolder(9)  # olFolderCalendar
     items = calendar.Items
@@ -42,10 +36,7 @@ def test_list_upcoming_events(namespace, days=7):
 
     start = datetime.now()
     end = start + timedelta(days=days)
-    restrict = (
-        f"[Start] >= '{start.strftime('%m/%d/%Y')}' "
-        f"AND [Start] <= '{end.strftime('%m/%d/%Y')}'"
-    )
+    restrict = f"[Start] >= '{start.strftime('%m/%d/%Y')}' AND [Start] <= '{end.strftime('%m/%d/%Y')}'"
     filtered = items.Restrict(restrict)
 
     count = 0
@@ -56,14 +47,13 @@ def test_list_upcoming_events(namespace, days=7):
         log(f"       Location: {item.Location or '(none)'}")
         log(f"       Organizer: {item.Organizer}")
         if count >= 10:
-            log(f"  ... (showing first 10)")
+            log("  ... (showing first 10)")
             break
 
     log(f"  Total events in next {days} days: {count}+")
-    return count
 
 
-def test_read_event_details(namespace):
+def test_read_event_details(namespace: Any) -> None:
     """Test 2: Read detailed properties from the first upcoming event."""
     calendar = namespace.GetDefaultFolder(9)
     items = calendar.Items
@@ -72,10 +62,7 @@ def test_read_event_details(namespace):
 
     start = datetime.now()
     end = start + timedelta(days=30)
-    restrict = (
-        f"[Start] >= '{start.strftime('%m/%d/%Y')}' "
-        f"AND [Start] <= '{end.strftime('%m/%d/%Y')}'"
-    )
+    restrict = f"[Start] >= '{start.strftime('%m/%d/%Y')}' AND [Start] <= '{end.strftime('%m/%d/%Y')}'"
     filtered = items.Restrict(restrict)
 
     item = None
@@ -104,9 +91,9 @@ def test_read_event_details(namespace):
     log(f"  Body: {(item.Body or '')[:100]}...")
 
 
-def test_create_appointment(outlook):
+def test_create_appointment(outlook: Any) -> None:
     """Test 3: Create a personal appointment (no attendees)."""
-    global _created_entry_id
+    global _created_entry_id  # noqa: PLW0603
 
     appt = outlook.CreateItem(1)  # olAppointmentItem
     start = datetime.now() + timedelta(days=3, hours=2)
@@ -126,7 +113,7 @@ def test_create_appointment(outlook):
     log(f"  EntryID: {appt.EntryID[:40]}...")
 
 
-def test_create_meeting(outlook):
+def test_create_meeting(outlook: Any) -> None:
     """Test 4: Create a meeting with an attendee and send the invite."""
     appt = outlook.CreateItem(1)
     start = datetime.now() + timedelta(days=4, hours=3)
@@ -147,9 +134,9 @@ def test_create_meeting(outlook):
     log(f"  Meeting sent: '{appt.Subject}' to user@example.com")
 
 
-def test_update_event(namespace):
+def test_update_event(namespace: Any) -> None:
     """Test 5: Modify the appointment created in Test 3."""
-    global _created_entry_id
+    global _created_entry_id  # noqa: PLW0602
     if not _created_entry_id:
         log("  SKIP: No appointment was created in Test 3")
         return
@@ -166,9 +153,9 @@ def test_update_event(namespace):
     log(f"  Location: {item.Location}")
 
 
-def test_delete_event(namespace):
+def test_delete_event(namespace: Any) -> None:
     """Test 6: Delete the appointment created in Test 3."""
-    global _created_entry_id
+    global _created_entry_id  # noqa: PLW0603
     if not _created_entry_id:
         log("  SKIP: No appointment was created in Test 3")
         return
@@ -180,7 +167,7 @@ def test_delete_event(namespace):
     log(f"  Deleted: '{subject}'")
 
 
-def test_search_events(namespace, keyword="MCP"):
+def test_search_events(namespace: Any, keyword: str = "MCP") -> None:
     """Test 7: Search calendar events by subject keyword.
 
     Cannot mix DASL @SQL= with regular [Start] property syntax in one
@@ -193,10 +180,7 @@ def test_search_events(namespace, keyword="MCP"):
 
     start = datetime.now() - timedelta(days=30)
     end = datetime.now() + timedelta(days=30)
-    restrict = (
-        f"[Start] >= '{start.strftime('%m/%d/%Y')}' "
-        f"AND [Start] <= '{end.strftime('%m/%d/%Y')}'"
-    )
+    restrict = f"[Start] >= '{start.strftime('%m/%d/%Y')}' AND [Start] <= '{end.strftime('%m/%d/%Y')}'"
     filtered = items.Restrict(restrict)
 
     keyword_lower = keyword.lower()
@@ -211,7 +195,7 @@ def test_search_events(namespace, keyword="MCP"):
     log(f"  Found {count} events matching '{keyword}'")
 
 
-def main():
+def main() -> None:
     log("=" * 60)
     log("Outlook Desktop MCP - Calendar COM Validation")
     log("=" * 60)
@@ -219,7 +203,12 @@ def main():
 
     log("--- Test 0: Connect to Outlook COM ---")
     try:
-        outlook, namespace = test_connect()
+        import pythoncom  # noqa: PLC0415
+        import win32com.client  # noqa: PLC0415
+
+        pythoncom.CoInitialize()
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        namespace = outlook.GetNamespace("MAPI")
         log("  PASS")
     except Exception as e:
         log(f"  FAIL: {e}")
@@ -253,7 +242,8 @@ def main():
     log(f"Results: {passed}/{total} passed")
     log("=" * 60)
 
-    import pythoncom
+    import pythoncom  # noqa: PLC0415
+
     pythoncom.CoUninitialize()
     sys.exit(0 if passed == total else 1)
 

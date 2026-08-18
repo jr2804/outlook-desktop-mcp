@@ -9,11 +9,16 @@ with a clear error instead of blocking for a bridge timeout. This keeps the
 unit tests (e.g. the blank-subject guard tests) fast and deterministic
 everywhere while still exercising all logic *before* the backend boundary.
 """
+
+import os
 import sys
+from collections.abc import Iterator
+from typing import Any, Never
 
 import pytest
+from _pytest.config import Config
 
-import outlook_desktop_mcp.server as server
+from outlook_desktop_mcp import server
 from outlook_desktop_mcp.backends.base import Backend
 
 # Test modules that drive a live Outlook COM / AppleScript session. They are
@@ -25,10 +30,7 @@ _COM_ONLY_MODULES = {
     "tests.test_extras_com",
 }
 
-_UNAVAILABLE_MSG = (
-    "Outlook backend is unavailable on this platform "
-    "(expected on Linux/WSL). Integration tests require Windows/macOS."
-)
+_UNAVAILABLE_MSG = "Outlook backend is unavailable on this platform (expected on Linux/WSL). Integration tests require Windows/macOS."
 
 
 class _UnavailableBackend(Backend):
@@ -36,89 +38,91 @@ class _UnavailableBackend(Backend):
 
     name = "unavailable-stub"
 
-    async def compose_email(self, *args, **kwargs):
+    async def compose_email(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def list_emails(self, *args, **kwargs):
+    async def list_emails(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def read_email(self, *args, **kwargs):
+    async def read_email(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def mark_as_read(self, *args, **kwargs):
+    async def mark_as_read(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def mark_as_unread(self, *args, **kwargs):
+    async def mark_as_unread(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def move_email(self, *args, **kwargs):
+    async def move_email(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def reply_email(self, *args, **kwargs):
+    async def reply_email(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def list_folders(self, *args, **kwargs):
+    async def list_folders(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def search_emails(self, *args, **kwargs):
+    async def search_emails(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def list_events(self, *args, **kwargs):
+    async def list_events(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def get_event(self, *args, **kwargs):
+    async def get_event(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def create_event(self, *args, **kwargs):
+    async def create_event(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def create_meeting(self, *args, **kwargs):
+    async def create_meeting(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def update_event(self, *args, **kwargs):
+    async def update_event(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def delete_event(self, *args, **kwargs):
+    async def delete_event(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def search_events(self, *args, **kwargs):
+    async def search_events(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def list_tasks(self, *args, **kwargs):
+    async def list_tasks(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def get_task(self, *args, **kwargs):
+    async def get_task(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def create_task(self, *args, **kwargs):
+    async def create_task(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def complete_task(self, *args, **kwargs):
+    async def complete_task(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def delete_task(self, *args, **kwargs):
+    async def delete_task(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def list_attachments(self, *args, **kwargs):
+    async def list_attachments(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def save_attachment(self, *args, **kwargs):
+    async def save_attachment(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
-    async def set_out_of_office(self, *args, **kwargs):
+    async def set_out_of_office(self, *args, **kwargs) -> Never:
         raise RuntimeError(_UNAVAILABLE_MSG)
 
 
-def _install_backend():
+def _install_backend() -> None:
     """Install the real backend on Windows/macOS, a stub elsewhere."""
-    from outlook_desktop_mcp.platform import Platform, current_platform
+    from outlook_desktop_mcp.platform import Platform, current_platform  # noqa: PLC0415
 
     platform = current_platform()
     if platform == Platform.DARWIN:
-        from outlook_desktop_mcp.backends.mac import AppleScriptBackend
+        from outlook_desktop_mcp.backends.mac import AppleScriptBackend  # noqa: PLC0415
+
         server.set_backend(AppleScriptBackend(), platform=platform)
     elif platform == Platform.WINDOWS:
-        from outlook_desktop_mcp.backends.win import ComBackend
+        from outlook_desktop_mcp.backends.win import ComBackend  # noqa: PLC0415
+
         server.set_backend(ComBackend(), platform=platform)
     else:
         server.set_backend(_UnavailableBackend(), platform=Platform.WINDOWS)
@@ -128,20 +132,68 @@ _install_backend()
 
 
 @pytest.fixture(autouse=True)
-def _ensure_backend_installed():
+def _ensure_backend_installed() -> None:
     """Guarantee a backend is installed for every test (idempotent)."""
     if server.backend is None:
         _install_backend()
-    yield
 
 
-def pytest_collection_modifyitems(config, items):
-    """Skip Windows/macOS-only COM test modules when COM is unavailable."""
-    if sys.platform == "win32":
-        return
-    skip_com = pytest.mark.skip(
-        reason="Requires a live Outlook COM session (Windows/macOS only)."
-    )
+# --- COM fixtures for the *_com_test validation scripts ---
+
+
+@pytest.fixture(scope="session")
+def outlook() -> Iterator[Any]:
+    """Session-scoped live Outlook Application COM object (Windows only)."""
+    if sys.platform != "win32":
+        pytest.skip("Requires a live Outlook COM session (Windows only).")
+    import pythoncom  # noqa: PLC0415
+    import win32com.client  # noqa: PLC0415
+
+    pythoncom.CoInitialize()
+    try:
+        yield win32com.client.Dispatch("Outlook.Application")
+    finally:
+        pythoncom.CoUninitialize()
+
+
+@pytest.fixture(scope="session")
+def namespace(outlook: Any) -> Any:
+    """Session-scoped MAPI namespace bound to the live Outlook session."""
+    return outlook.GetNamespace("MAPI")
+
+
+# Tests that MUTATE the live Outlook mailbox (send/create/update/delete/move/
+# mark/set). They are skipped by default so parallel work in Outlook is not
+# disturbed; set OUTLOOK_MCP_WRITE_TESTS=1 (or true) to include them.
+# Read-only tests (list/read/search/get) always run.
+_WRITE_TEST_NAMES = {
+    "test_send_email",
+    "test_mark_read_unread",
+    "test_move_to_archive",
+    "test_create_appointment",
+    "test_create_meeting",
+    "test_update_event",
+    "test_delete_event",
+    "test_create_task",
+    "test_complete_task",
+    "test_delete_task",
+    "test_set_category",
+}
+
+
+def _write_tests_enabled() -> bool:
+    """Mutating live-Outlook tests opt-in via OUTLOOK_MCP_WRITE_TESTS."""
+    return os.environ.get("OUTLOOK_MCP_WRITE_TESTS", "").strip().lower() in ("1", "true", "yes")
+
+
+def pytest_collection_modifyitems(config: Config, items: list[Any]) -> None:  # noqa: ANN001
+    """Skip COM modules off-Windows and mutating tests unless opted in."""
+    del config
+    skip_com = pytest.mark.skip(reason="Requires a live Outlook COM session (Windows/macOS only).")
+    skip_write = pytest.mark.skip(reason="Mutates the live Outlook mailbox; set OUTLOOK_MCP_WRITE_TESTS=1 to run.")
+    write_enabled = _write_tests_enabled()
     for item in items:
-        if item.module.__name__ in _COM_ONLY_MODULES:
+        if sys.platform != "win32" and item.module.__name__ in _COM_ONLY_MODULES:
             item.add_marker(skip_com)
+        elif not write_enabled and item.name.split("[")[0] in _WRITE_TEST_NAMES:
+            item.add_marker(skip_write)
