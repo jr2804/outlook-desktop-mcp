@@ -2,7 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/outlook-desktop-mcp)](https://pypi.org/project/outlook-desktop-mcp/)
 [![Python](https://img.shields.io/pypi/pyversions/outlook-desktop-mcp)](https://pypi.org/project/outlook-desktop-mcp/)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue)]()
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue)](https://github.com/Aanerud/outlook-desktop-mcp)
 
 **Turn your running Outlook Desktop into an MCP server.** No Microsoft Graph API, no Entra app registration, no OAuth tokens — just your local Outlook and the authentication you already have.
 
@@ -67,7 +67,7 @@ The server uses a single `server.py` with a unified tool surface. Each tool is a
 - **Python 3.13+** (x64 or ARM64)
 - **Outlook must be running** when the MCP server starts
 
-Both x64 and ARM64 Windows are supported. On ARM64, all dependencies (`pywin32`, `mcp`, `pydantic-core`, `cryptography`, `cffi`, `rpds-py`) have prebuilt `win_arm64` wheels — see the [ARM64 install notes](#arm64-windows) below.
+Both x64 and ARM64 Windows are supported. On ARM64, all dependencies (`pywin32`, `mcp`, `pydantic-core`, `cryptography`, `cffi`, `rpds-py`) have prebuilt `win_arm64` wheels — see the [ARM64 install notes](#windows-arm64) below.
 
 #### Outlook "Programmatic Access" security prompts
 
