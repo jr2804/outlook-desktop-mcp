@@ -215,15 +215,13 @@ class ComBackend(Backend):
         self.bridge = OutlookBridge()
 
     def start(self) -> None:
-        self.bridge.start()
+        asyncio.run(self.bridge.start())
 
     def stop(self) -> None:
-        self.bridge.stop()
+        asyncio.run(self.bridge.stop())
 
     def format_unexpected_error(self, action: str, e: Exception) -> str:
         """Surface COM HRESULT detail (Windows-only override)."""
-        from outlook_desktop_mcp.backends.win.errors import format_com_error  # noqa: PLC0415
-
         return f"{action}: {format_com_error(e)}"
 
     # --- accounts ---
