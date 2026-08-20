@@ -6,6 +6,7 @@ return pydantic models. Handled failures raise :class:`BackendError`.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -25,6 +26,7 @@ from outlook_desktop_mcp.backends.win._types import (
     Outlook as OutlookCOM,
 )
 from outlook_desktop_mcp.backends.win.bridge import OutlookBridge
+from outlook_desktop_mcp.backends.win.errors import format_com_error
 from outlook_desktop_mcp.backends.win.formatting import (
     format_email_full,
     format_email_summary,

@@ -11,6 +11,9 @@ import logging
 import os
 import sys
 
+from mcp.client.session import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
+
 # Ensure our package is importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -22,9 +25,6 @@ def log(msg: str) -> None:
 
 
 async def run_tests() -> None:
-    from mcp.client.session import ClientSession  # noqa: PLC0415
-    from mcp.client.stdio import StdioServerParameters, stdio_client  # noqa: PLC0415
-
     python_exe = r"C:\Development_Local\outlook-desktop-mcp\.venv\Scripts\python.exe"
 
     server_params = StdioServerParameters(
