@@ -115,12 +115,12 @@ Both permissions are one-time setup — macOS remembers them for future sessions
 | Tool | Windows | macOS | Description |
 |------|:-------:|:-----:|-------------|
 | `send_email` | yes | yes | Send an email with To/CC/BCC, plain text or HTML body |
-| `draft_email` | yes | yes | Save an email as a draft without sending |
+| `draft_email` | yes | yes | Save an email as a draft without sending (plain text or HTML body) |
 | `list_emails` | yes | yes | List recent emails from any folder, with optional unread filter |
 | `read_email` | yes | yes | Read full email content by entry ID or subject search |
 | `search_emails` | yes | yes | Full-text search across email subjects and bodies |
-| `reply_email` | yes | yes | Reply or reply-all, preserving the conversation thread |
-| `draft_reply_email` | yes | yes | Save a reply as a draft without sending |
+| `reply_email` | yes | yes | Reply or reply-all, plain text or HTML body, preserving the conversation thread |
+| `draft_reply_email` | yes | yes | Save a reply as a draft without sending (plain text or HTML body) |
 | `mark_as_read` | yes | yes | Mark a specific email as read |
 | `mark_as_unread` | yes | yes | Mark a specific email as unread |
 | `move_email` | yes | yes | Move an email to Archive, Trash, or any folder |

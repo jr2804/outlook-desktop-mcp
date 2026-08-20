@@ -370,6 +370,7 @@ async def reply_email(
     entry_id: str,
     body: str,
     reply_all: bool = False,
+    html_body: str = "",
     account: str = "",
 ) -> str:
     """Reply to an email in Outlook.
@@ -379,10 +380,13 @@ async def reply_email(
 
     Args:
         entry_id: The Outlook EntryID of the email to reply to.
-        body: The reply message text. Prepended above the original message
-            in the email thread.
+        body: The plain-text reply message text. Prepended above the original
+            message in the email thread. If html_body is also provided, both
+            are set and Outlook will prefer the HTML version.
         reply_all: If true, reply to all recipients (sender + all CC/To).
             If false (default), reply only to the sender.
+        html_body: Optional. HTML-formatted reply body. When provided, Outlook
+            renders the reply as HTML. The plain-text body serves as fallback.
         account: Optional (Windows only). Account display name (or substring).
             Only needed if entry_id is ambiguous across stores.
 
@@ -391,7 +395,7 @@ async def reply_email(
     """
     return await _run(
         "Error replying to email",
-        lambda: _require_backend().reply_email(entry_id, body, reply_all, account, send=True),
+        lambda: _require_backend().reply_email(entry_id, body, reply_all, html_body, account, send=True),
     )
 
 
@@ -400,6 +404,7 @@ async def draft_reply_email(
     entry_id: str,
     body: str,
     reply_all: bool = False,
+    html_body: str = "",
     account: str = "",
 ) -> str:
     """Create a reply draft without sending it.
@@ -410,10 +415,13 @@ async def draft_reply_email(
 
     Args:
         entry_id: The Outlook EntryID of the email to reply to.
-        body: The reply message text. Prepended above the original message
-            in the email thread.
+        body: The plain-text reply message text. Prepended above the original
+            message in the email thread. If html_body is also provided, both
+            are set and Outlook will prefer the HTML version.
         reply_all: If true, reply to all recipients (sender + all CC/To).
             If false (default), reply only to the sender.
+        html_body: Optional. HTML-formatted reply body. When provided, Outlook
+            renders the reply as HTML. The plain-text body serves as fallback.
         account: Optional (Windows only). Account display name (or substring).
             Only needed if entry_id is ambiguous across stores.
 
@@ -422,7 +430,7 @@ async def draft_reply_email(
     """
     return await _run(
         "Error creating reply draft",
-        lambda: _require_backend().reply_email(entry_id, body, reply_all, account, send=False),
+        lambda: _require_backend().reply_email(entry_id, body, reply_all, html_body, account, send=False),
     )
 
 

@@ -312,19 +312,24 @@ end tell"""
         entry_id: str,
         body: str,
         reply_all: bool,
+        html_body: str,
         account: str,
         send: bool,
     ) -> ReplySentResult | ReplyDraftSavedResult:
         reply_cmd = "reply all to" if reply_all else "reply to"
         action = "send replyMsg" if send else 'save replyMsg in folder "Drafts"'
-        script = f'''tell application "Microsoft Outlook"
+        if html_body:
+            set_content = f'set html content of replyMsg to "{escape(html_body)}" & return & return & html content of replyMsg'
+        else:
+            set_content = f'set content of replyMsg to "{escape(body)}" & return & return & content of replyMsg'
+        script = f"""tell application "Microsoft Outlook"
     set m to message id {entry_id}
     set msubject to subject of m
     set replyMsg to {reply_cmd} m
-    set content of replyMsg to "{escape(body)}" & return & return & content of replyMsg
+    {set_content}
     {action}
     return msubject
-end tell'''
+end tell"""
         subject = await self.bridge.run(script)
         if send:
             return ReplySentResult(subject=subject, reply_all=reply_all)

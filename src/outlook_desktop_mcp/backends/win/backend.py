@@ -407,7 +407,10 @@ class ComBackend(Backend):
             _require_class(item, _OL_CLASS_MAIL, "mail item")
             subject = item.Subject
             reply_item = item.ReplyAll() if reply_all else item.Reply()
-            reply_item.Body = body + "\n\n" + reply_item.Body
+            if html_body:
+                reply_item.HTMLBody = html_body + "<br><br>" + reply_item.HTMLBody
+            else:
+                reply_item.Body = body + "\n\n" + reply_item.Body
             if send:
                 reply_item.Send()
                 return ReplySentResult(subject=subject, reply_all=reply_all)
