@@ -396,6 +396,7 @@ class ComBackend(Backend):
         entry_id: str,
         body: str,
         reply_all: bool,
+        html_body: str,
         account: str,
         send: bool,
     ) -> ReplySentResult | ReplyDraftSavedResult:
