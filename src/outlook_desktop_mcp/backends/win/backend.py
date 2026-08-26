@@ -10,7 +10,9 @@ import asyncio
 import logging
 import os
 import re
-from datetime import datetime, timedelta
+import sys
+from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from typing import Any, cast
 
 from outlook_desktop_mcp.backends.base import Backend, BackendError
@@ -102,6 +104,49 @@ def _safe_dasl(query: str) -> str:
 def _parse_date(date_str: str) -> datetime:
     """Parse ISO 8601 date string like '2026-02-25 14:00' or '2026-02-25T14:00:00'."""
     return datetime.fromisoformat(date_str)
+
+
+@lru_cache(maxsize=1)
+def _locale_date_order() -> int:
+    """Return the user's short-date order: 0=MDY, 1=DMY, 2=YMD.
+
+    Outlook's Jet parser reads slash dates in the *locale's* order, so a fixed
+    ``%m/%d/%Y`` silently swaps month and day on day-first locales such as
+    German whenever the day component is <= 12.
+    """
+    if sys.platform != "win32":
+        return 0
+    try:
+        import ctypes
+
+        LOCALE_IDATE = 0x00000004
+        LOCALE_RETURN_NUMBER = 0x20000000
+        value = ctypes.c_uint32(0)
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined,no-any-expr]
+        written = kernel32.GetLocaleInfoExW(
+            None,  # LOCALE_NAME_USER_DEFAULT
+            LOCALE_IDATE | LOCALE_RETURN_NUMBER,
+            ctypes.byref(value),
+            ctypes.sizeof(value),
+        )
+        if written and value.value <= 2:
+            return int(value.value)
+    except Exception:  # pragma: no cover - defensive, Windows only
+        pass
+    return 0
+
+
+def _jet_datetime(dt: datetime, *, order: int | None = None) -> str:
+    """Format *dt* for a Jet restriction honoring the system short-date order."""
+    effective = _locale_date_order() if order is None else order
+    fmt = {0: "%m/%d/%Y", 1: "%d/%m/%Y", 2: "%Y/%m/%d"}[effective]
+    return dt.strftime(f"{fmt} %H:%M")
+
+
+def _dasl_utc(dt: datetime) -> str:
+    """Format *dt* as a UTC ISO literal, as required by DASL date comparisons."""
+    local = dt.astimezone() if dt.tzinfo is None else dt
+    return local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _require_class(item: Any, expected_class: int, label: str) -> None:
@@ -302,12 +347,12 @@ class ComBackend(Backend):
                 restrictions.append("[UnRead] = True")
             if start_date:
                 start = _parse_date(start_date)
-                restrictions.append(f"[ReceivedTime] >= '{start.strftime('%m/%d/%Y %H:%M')}'")
+                restrictions.append(f"[ReceivedTime] >= '{_jet_datetime(start)}'")
             if end_date:
                 end = _parse_date(end_date)
-                restrictions.append(f"[ReceivedTime] <= '{end.strftime('%m/%d/%Y %H:%M')}'")
+                restrictions.append(f"[ReceivedTime] <= '{_jet_datetime(end)}'")
             elif start_date:
-                restrictions.append(f"[ReceivedTime] <= '{datetime.now().strftime('%m/%d/%Y %H:%M')}'")
+                restrictions.append(f"[ReceivedTime] <= '{_jet_datetime(datetime.now())}'")
 
             if restrictions:
                 items = items.Restrict(" AND ".join(restrictions))
@@ -482,12 +527,12 @@ class ComBackend(Backend):
             dasl_parts = [f"(\"urn:schemas:httpmail:subject\" LIKE '%{safe_query}%' OR \"urn:schemas:httpmail:textdescription\" LIKE '%{safe_query}%')"]
             if start_date:
                 start = _parse_date(start_date)
-                dasl_parts.append(f"\"urn:schemas:httpmail:datereceived\" >= '{start.strftime('%m/%d/%Y %H:%M')}'")
+                dasl_parts.append(f"\"urn:schemas:httpmail:datereceived\" >= '{_dasl_utc(start)}'")
             if end_date:
                 end = _parse_date(end_date)
-                dasl_parts.append(f"\"urn:schemas:httpmail:datereceived\" <= '{end.strftime('%m/%d/%Y %H:%M')}'")
+                dasl_parts.append(f"\"urn:schemas:httpmail:datereceived\" <= '{_dasl_utc(end)}'")
             elif start_date:
-                dasl_parts.append(f"\"urn:schemas:httpmail:datereceived\" <= '{datetime.now().strftime('%m/%d/%Y %H:%M')}'")
+                dasl_parts.append(f"\"urn:schemas:httpmail:datereceived\" <= '{_dasl_utc(datetime.now())}'")
 
             filter_str = "@SQL=" + " AND ".join(dasl_parts)
             items = target.Items.Restrict(filter_str)
@@ -527,7 +572,7 @@ class ComBackend(Backend):
             start = _parse_date(start_date) if start_date else datetime.now()
             end = _parse_date(end_date) if end_date else start + timedelta(days=7)
 
-            restrict = f"[Start] >= '{start.strftime('%m/%d/%Y %H:%M')}' AND [Start] <= '{end.strftime('%m/%d/%Y %H:%M')}'"
+            restrict = f"[Start] >= '{_jet_datetime(start)}' AND [Start] <= '{_jet_datetime(end)}'"
             filtered = items.Restrict(restrict)
 
             results = []
@@ -746,7 +791,7 @@ class ComBackend(Backend):
             start = _parse_date(start_date) if start_date else datetime.now() - timedelta(days=30)
             end = _parse_date(end_date) if end_date else datetime.now() + timedelta(days=30)
 
-            restrict = f"[Start] >= '{start.strftime('%m/%d/%Y %H:%M')}' AND [Start] <= '{end.strftime('%m/%d/%Y %H:%M')}'"
+            restrict = f"[Start] >= '{_jet_datetime(start)}' AND [Start] <= '{_jet_datetime(end)}'"
             filtered = items.Restrict(restrict)
 
             query_lower = query.lower()

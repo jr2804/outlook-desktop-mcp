@@ -115,7 +115,12 @@ def _install_backend() -> None:
     """Install the real backend on Windows/macOS, a stub elsewhere."""
     from outlook_desktop_mcp.platform import Platform, current_platform  # noqa: PLC0415
 
-    platform = current_platform()
+    try:
+        platform = current_platform()
+    except RuntimeError:
+        # Unsupported host (e.g. Linux CI): fall back to the unavailable stub.
+        server.set_backend(_UnavailableBackend(), platform=Platform.WINDOWS)
+        return
     if platform == Platform.DARWIN:
         from outlook_desktop_mcp.backends.mac import AppleScriptBackend  # noqa: PLC0415
 
