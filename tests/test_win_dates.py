@@ -44,3 +44,67 @@ def test_dasl_utc_naive_becomes_zulu() -> None:
 def test_dasl_utc_tz_aware_roundtrip() -> None:
     dt = datetime(2026, 1, 6, 12, 0, tzinfo=timezone.utc)
     assert _dasl_utc(dt) == "2026-01-06T12:00:00Z"
+
+
+def test_parse_date_window_naive_local_to_utc() -> None:
+    """Naive date strings are interpreted as local time and converted to UTC."""
+    from outlook_desktop_mcp.backends.win.backend import _parse_date_window
+
+    w = _parse_date_window("2026-01-05", "2026-01-09")
+    assert w.lo is not None and w.lo.tzinfo is not None
+    assert w.hi is not None and w.hi.tzinfo is not None
+    assert w.lo < w.hi
+
+
+def test_parse_date_window_open_high_when_only_start() -> None:
+    """A start date with no end date closes the window at 'now'."""
+    from outlook_desktop_mcp.backends.win.backend import _parse_date_window
+
+    w = _parse_date_window("2026-01-05", "")
+    assert w.lo is not None
+    assert w.hi is not None  # defaults to now
+
+
+def test_parse_date_window_both_empty_is_open() -> None:
+    from outlook_desktop_mcp.backends.win.backend import _parse_date_window
+
+    w = _parse_date_window("", "")
+    assert w.lo is None and w.hi is None
+
+
+def test_within_window_boundaries_inclusive() -> None:
+    from datetime import timedelta
+    from outlook_desktop_mcp.backends.win.backend import (
+        _DateWindow,
+        _parse_date_window,
+        _within_window,
+    )
+
+    w = _parse_date_window("2026-01-05", "2026-01-09")
+    assert w.lo is not None and w.hi is not None
+    assert _within_window(w.lo, w)   # lower bound inclusive
+    assert _within_window(w.hi, w)   # upper bound inclusive
+    assert _within_window(w.lo + timedelta(minutes=1), w)
+    assert not _within_window(w.lo - timedelta(minutes=1), w)
+    assert not _within_window(w.hi + timedelta(minutes=1), w)
+    assert _within_window(datetime(2026, 1, 7, 12, 0, tzinfo=timezone.utc), w)
+
+
+def test_within_window_open_bounds() -> None:
+    from outlook_desktop_mcp.backends.win.backend import _DateWindow, _within_window
+
+    w = _DateWindow(lo=None, hi=None)
+    assert _within_window(datetime(2026, 1, 7, tzinfo=timezone.utc), w)
+
+
+def test_date_window_comparisons_are_utc_aware() -> None:
+    """The window bounds and candidate items are compared in UTC regardless of
+    the caller's local timezone, so naive input and aware items line up."""
+    from outlook_desktop_mcp.backends.win.backend import _parse_date_window, _within_window
+
+    # 2026-01-05 00:00 local == 2026-01-04T23:00:00Z for UTC+1
+    w = _parse_date_window("2026-01-05", "2026-01-05 23:59")
+    # A candidate item stamped 2026-01-05 00:00 UTC is just above lo (23:00 UTC).
+    assert _within_window(datetime(2026, 1, 5, 0, 0, tzinfo=timezone.utc), w)
+    # A candidate stamped 2026-01-04 21:59 UTC is strictly below lo.
+    assert not _within_window(datetime(2026, 1, 4, 21, 59, tzinfo=timezone.utc), w)

@@ -7,6 +7,7 @@ return pydantic models. Handled failures raise :class:`BackendError`.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 import os
 import re
@@ -147,6 +148,69 @@ def _dasl_utc(dt: datetime) -> str:
     """Format *dt* as a UTC ISO literal, as required by DASL date comparisons."""
     local = dt.astimezone() if dt.tzinfo is None else dt
     return local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@dataclasses.dataclass
+class _DateWindow:
+    """A [lo, hi] bounds pair for Python-side date filtering.
+
+    `lo` and `hi` are timezone-aware datetimes (UTC) or None when the bound is
+    open. `hi` is inclusive; `lo` is inclusive.
+    """
+
+    lo: datetime | None
+    hi: datetime | None
+
+
+def _parse_date_window(start_date: str, end_date: str) -> _DateWindow:
+    """Build a timezone-aware window from ISO date(-time) strings.
+
+    Input dates are assumed to be local time (naive) and are converted to UTC.
+    `start_date` maps to the window's lower bound (inclusive), `end_date` to the
+    upper bound (inclusive).
+    """
+    local = datetime.now().astimezone()
+
+    def _to_utc(value: str) -> datetime:
+        dt = datetime.fromisoformat(value)
+        # Naive input -> interpret as local time, then convert to UTC.
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=local.tzinfo)
+        return dt.astimezone(timezone.utc)
+
+    lo = _to_utc(start_date) if start_date else None
+    hi = _to_utc(end_date) if end_date else None
+    if not end_date and start_date:
+        # A start date without an end date means "through now".
+        hi = datetime.now(timezone.utc)
+    return _DateWindow(lo=lo, hi=hi)
+
+
+def _item_received_utc(item: Any) -> datetime | None:
+    """Return an item's ReceivedTime as an aware UTC datetime, or None."""
+    try:
+        raw = item.ReceivedTime
+    except Exception:  # noqa: S112 - missing attribute / COM transient
+        return None
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+    if raw.tzinfo is None:
+        raw = raw.replace(tzinfo=datetime.now().astimezone().tzinfo)
+    return raw.astimezone(timezone.utc)
+
+
+def _within_window(dt: datetime, window: _DateWindow) -> bool:
+    """Return True if the aware UTC *dt* is inside [lo, hi] (both inclusive)."""
+    if window.lo is not None and dt < window.lo:
+        return False
+    if window.hi is not None and dt > window.hi:
+        return False
+    return True
 
 
 def _require_class(item: Any, expected_class: int, label: str) -> None:
@@ -342,26 +406,38 @@ class ComBackend(Backend):
             items = target.Items
             items.Sort("[ReceivedTime]", True)
 
+            # Outlook's date Restrict is unreliable here (silently returns the whole
+            # folder / drops sibling filters), so restrict only by the filters that
+            # are proven to work (unread) and post-filter by date in Python.
             restrictions = []
             if unread_only:
                 restrictions.append("[UnRead] = True")
-            if start_date:
-                start = _parse_date(start_date)
-                restrictions.append(f"[ReceivedTime] >= '{_jet_datetime(start)}'")
-            if end_date:
-                end = _parse_date(end_date)
-                restrictions.append(f"[ReceivedTime] <= '{_jet_datetime(end)}'")
-            elif start_date:
-                restrictions.append(f"[ReceivedTime] <= '{_jet_datetime(datetime.now())}'")
 
             if restrictions:
                 items = items.Restrict(" AND ".join(restrictions))
 
             results = []
-            limit = min(effective_count, items.Count)
-            for i in range(limit):
+            # Parse the date window (local-naive from input, treated as local time).
+            window = _parse_date_window(start_date, end_date)
+            total = items.Count
+            # Walk newest→oldest until we've collected the target count, the folder
+            # is exhausted, or we sink below the window's lower bound.
+            for i in range(total):
+                if len(results) >= effective_count:
+                    break
                 try:
-                    results.append(EmailSummary.model_validate(format_email_summary(items.Item(i + 1))))
+                    item = items.Item(i + 1)
+                except Exception:  # noqa: S112 - item vanished mid-iteration
+                    continue
+                dt = _item_received_utc(item)
+                if dt is None:
+                    continue
+                if not _within_window(dt, window):
+                    if window.lo is not None and dt < window.lo:
+                        break  # newer items already collected; rest are older
+                    continue  # too new (above hi) — keep walking
+                try:
+                    results.append(EmailSummary.model_validate(format_email_summary(item)))
                 except Exception:  # noqa: S112
                     continue
             return results
@@ -524,25 +600,33 @@ class ComBackend(Backend):
                 raise BackendError(f"Folder '{folder}' not found")
 
             safe_query = _safe_dasl(query)
-            dasl_parts = [f"(\"urn:schemas:httpmail:subject\" LIKE '%{safe_query}%' OR \"urn:schemas:httpmail:textdescription\" LIKE '%{safe_query}%')"]
-            if start_date:
-                start = _parse_date(start_date)
-                dasl_parts.append(f"\"urn:schemas:httpmail:datereceived\" >= '{_dasl_utc(start)}'")
-            if end_date:
-                end = _parse_date(end_date)
-                dasl_parts.append(f"\"urn:schemas:httpmail:datereceived\" <= '{_dasl_utc(end)}'")
-            elif start_date:
-                dasl_parts.append(f"\"urn:schemas:httpmail:datereceived\" <= '{_dasl_utc(datetime.now())}'")
-
-            filter_str = "@SQL=" + " AND ".join(dasl_parts)
+            filter_str = f"@SQL=(\"urn:schemas:httpmail:subject\" LIKE '%{safe_query}%' OR \"urn:schemas:httpmail:textdescription\" LIKE '%{safe_query}%')"
             items = target.Items.Restrict(filter_str)
             items.Sort("[ReceivedTime]", True)
 
             results = []
-            limit = min(effective_count, items.Count)
-            for i in range(limit):
+            # Date filtering is done in Python: adding a datereceived comparison to
+            # the Restrict silently drops the whole filter (including the subject
+            # match) on this Outlook build, so restrict by subject only and apply
+            # the window here, walking newest→oldest until collected or past lo.
+            window = _parse_date_window(start_date, end_date)
+            total = items.Count
+            for i in range(total):
+                if len(results) >= effective_count:
+                    break
                 try:
-                    results.append(EmailSummary.model_validate(format_email_summary(items.Item(i + 1))))
+                    item = items.Item(i + 1)
+                except Exception:  # noqa: S112 - item vanished mid-iteration
+                    continue
+                dt = _item_received_utc(item)
+                if dt is None:
+                    continue
+                if not _within_window(dt, window):
+                    if window.lo is not None and dt < window.lo:
+                        break  # newer items already collected; rest are older
+                    continue  # too new (above hi) — keep walking
+                try:
+                    results.append(EmailSummary.model_validate(format_email_summary(item)))
                 except Exception:  # noqa: S112
                     continue
             return results
