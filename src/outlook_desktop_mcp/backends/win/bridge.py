@@ -17,12 +17,15 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
-from outlook_desktop_mcp.backends.base.bridge import BridgeBase
+import pythoncom
+import win32com.client
 
-logger = logging.getLogger("outlook_desktop_mcp.backends.win.bridge")
+from outlook_desktop_mcp.backends.base.bridge import BridgeBase
 
 COM_OPERATION_TIMEOUT = 60  # seconds
 COM_INIT_TIMEOUT = 15  # seconds
+
+logger = logging.getLogger("outlook_desktop_mcp.backends.win.bridge")
 
 
 class OutlookBridge(BridgeBase):
@@ -79,12 +82,6 @@ class OutlookBridge(BridgeBase):
 
     def _com_thread_main(self) -> None:
         """Main loop for the COM thread."""
-        # ty: ignore[unresolved-import]
-        import pythoncom  # noqa: PLC0415
-
-        # ty: ignore[unresolved-import]
-        import win32com.client  # noqa: PLC0415
-
         pythoncom.CoInitialize()
         try:
             self._outlook = win32com.client.Dispatch("Outlook.Application")

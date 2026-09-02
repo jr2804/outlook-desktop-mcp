@@ -3,18 +3,25 @@
 import re
 from datetime import datetime
 
+# Locale-independent AppleScript folder keywords
+FOLDER_MAP = {
+    "inbox": "inbox",
+    "sent": "sent items",
+    "sentmail": "sent items",
+    "sent items": "sent items",
+    "drafts": "drafts",
+    "deleted": "deleted items",
+    "deleted items": "deleted items",
+    "trash": "deleted items",
+    "junk": "junk mail",
+    "spam": "junk mail",
+    "outbox": "outbox",
+}
 
-def escape(text: str) -> str:
-    """Escape a string for safe embedding inside AppleScript double quotes.
 
-    Handles backslashes, double quotes, and other special characters.
-    """
-    text = text.replace("\\", "\\\\")
-    text = text.replace('"', '\\"')
-    text = text.replace("\n", "\\n")
-    text = text.replace("\r", "\\r")
-    text = text.replace("\t", "\\t")
-    return text
+# Delimiter used for structured AppleScript output
+DELIM = "|||"
+RECORD_DELIM = "==="
 
 
 def format_date(dt: datetime) -> str:
@@ -55,22 +62,6 @@ def parse_date(text: str) -> str:
     return text
 
 
-# Locale-independent AppleScript folder keywords
-FOLDER_MAP = {
-    "inbox": "inbox",
-    "sent": "sent items",
-    "sentmail": "sent items",
-    "sent items": "sent items",
-    "drafts": "drafts",
-    "deleted": "deleted items",
-    "deleted items": "deleted items",
-    "trash": "deleted items",
-    "junk": "junk mail",
-    "spam": "junk mail",
-    "outbox": "outbox",
-}
-
-
 def resolve_folder_ref(folder_name: str) -> str:
     """Map a user-facing folder name to an AppleScript folder reference.
 
@@ -84,6 +75,14 @@ def resolve_folder_ref(folder_name: str) -> str:
     return f'mail folder "{escape(folder_name)}"'
 
 
-# Delimiter used for structured AppleScript output
-DELIM = "|||"
-RECORD_DELIM = "==="
+def escape(text: str) -> str:
+    """Escape a string for safe embedding inside AppleScript double quotes.
+
+    Handles backslashes, double quotes, and other special characters.
+    """
+    text = text.replace("\\", "\\\\")
+    text = text.replace('"', '\\"')
+    text = text.replace("\n", "\\n")
+    text = text.replace("\r", "\\r")
+    text = text.replace("\t", "\\t")
+    return text

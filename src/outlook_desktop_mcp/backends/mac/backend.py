@@ -14,6 +14,7 @@ Signature parity notes:
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import os
@@ -26,6 +27,7 @@ from outlook_desktop_mcp.backends.mac.applescript_helpers import (
     RECORD_DELIM,
     escape,
     format_date,
+    parse_date,
     resolve_folder_ref,
 )
 from outlook_desktop_mcp.backends.mac.bridge import AppleScriptBridge
@@ -51,8 +53,6 @@ from outlook_desktop_mcp.models import (
     TaskFull,
     TaskSummary,
 )
-
-logger = logging.getLogger("outlook_desktop_mcp.backends.mac.backend")
 
 _UI_MESSAGE_LIST_PATH = (
     'tell application "System Events"\n'
@@ -92,21 +92,7 @@ _ATTACHMENT_TOKENS = {
 _SKIP_PREFIXES = ("Merket som", "Marked as", "Marqué comme", "Markiert als", "Marcado como", "A ")
 _CATEGORY_TOKENS = {"Kategorisert", "Categorized", "Catégorisé", "Kategorisiert", "Categorizado"}
 
-
-def _truncate(text: str, max_length: int = 5000) -> str:
-    if len(text) <= max_length:
-        return text
-    return text[:max_length] + "\n... [truncated]"
-
-
-def _clean(value: str) -> str:
-    """Replace AppleScript's 'missing value' with empty string."""
-    v = value.strip()
-    return "" if v == "missing value" else v
-
-
-def _parse_iso(date_str: str) -> datetime:
-    return datetime.fromisoformat(date_str)
+logger = logging.getLogger("outlook_desktop_mcp.backends.mac.backend")
 
 
 class AppleScriptBackend(Backend):
@@ -118,12 +104,10 @@ class AppleScriptBackend(Backend):
         self.bridge = AppleScriptBridge()
 
     def start(self) -> None:
-        import asyncio  # noqa: PLC0415
 
         asyncio.run(self.bridge.start())
 
     def stop(self) -> None:
-        import asyncio  # noqa: PLC0415
 
         asyncio.run(self.bridge.stop())
 
@@ -1124,11 +1108,25 @@ end tell"""
     @staticmethod
     def _to_iso(locale_time: str) -> str | None:
         """Best-effort conversion of an AppleScript date string to ISO 8601."""
-        from outlook_desktop_mcp.backends.mac.applescript_helpers import parse_date  # noqa: PLC0415
-
         iso = parse_date(locale_time)
         try:
             datetime.fromisoformat(iso)
             return iso
         except ValueError:
             return None
+
+
+def _truncate(text: str, max_length: int = 5000) -> str:
+    if len(text) <= max_length:
+        return text
+    return text[:max_length] + "\n... [truncated]"
+
+
+def _clean(value: str) -> str:
+    """Replace AppleScript's 'missing value' with empty string."""
+    v = value.strip()
+    return "" if v == "missing value" else v
+
+
+def _parse_iso(date_str: str) -> datetime:
+    return datetime.fromisoformat(date_str)

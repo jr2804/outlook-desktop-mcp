@@ -42,17 +42,7 @@ from outlook_desktop_mcp.tools._folder_constants import (
 )
 
 
-def _resolve_calendar(namespace: Namespace, folder: str, store: Store) -> Folder:
-    """Resolve the calendar folder: named path or the store's default."""
-    if folder:
-        calendar = _resolve_folder(namespace, folder, store)
-        if not calendar:
-            raise BackendError(f"Calendar folder '{folder}' not found")
-        return calendar
-    return store.GetDefaultFolder(OL_FOLDER_CALENDAR)
-
-
-async def list_events(  # noqa: PLC0415
+async def list_events(
     bridge: Any,
     start_date: str,
     end_date: str,
@@ -99,7 +89,7 @@ async def get_event(bridge: Any, get_item: Callable, entry_id: str, account: str
     return await bridge.call(_get)
 
 
-async def create_event(  # noqa: PLC0415
+async def create_event(
     bridge: Any,
     subject: str,
     start: str,
@@ -144,7 +134,7 @@ async def create_event(  # noqa: PLC0415
     return await bridge.call(_create)
 
 
-async def create_meeting(  # noqa: PLC0415
+async def create_meeting(
     bridge: Any,
     subject: str,
     start: str,
@@ -196,7 +186,7 @@ async def create_meeting(  # noqa: PLC0415
     return await bridge.call(_create)
 
 
-async def update_event(  # noqa: PLC0415
+async def update_event(
     bridge: Any,
     get_item: Callable,
     entry_id: str,
@@ -281,7 +271,7 @@ async def respond_to_meeting(
     return await bridge.call(_respond)
 
 
-async def search_events(  # noqa: PLC0415
+async def search_events(
     bridge: Any,
     query: str,
     start_date: str,
@@ -317,3 +307,13 @@ async def search_events(  # noqa: PLC0415
         return results
 
     return await bridge.call(_search)
+
+
+def _resolve_calendar(namespace: Namespace, folder: str, store: Store) -> Folder:
+    """Resolve the calendar folder: named path or the store's default."""
+    if folder:
+        calendar = _resolve_folder(namespace, folder, store)
+        if not calendar:
+            raise BackendError(f"Calendar folder '{folder}' not found")
+        return calendar
+    return store.GetDefaultFolder(OL_FOLDER_CALENDAR)

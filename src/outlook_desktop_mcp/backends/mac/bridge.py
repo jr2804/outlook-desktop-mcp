@@ -13,10 +13,10 @@ import logging
 
 from outlook_desktop_mcp.backends.base.bridge import BridgeBase
 
-logger = logging.getLogger("outlook_desktop_mcp.backends.mac.bridge")
-
 STARTUP_TIMEOUT = 10
 SCRIPT_TIMEOUT = 30
+
+logger = logging.getLogger("outlook_desktop_mcp.backends.mac.bridge")
 
 
 class AppleScriptBridge(BridgeBase):

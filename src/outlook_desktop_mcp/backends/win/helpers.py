@@ -19,6 +19,18 @@ _OL_CLASS_APPOINTMENT = 26
 _OL_CLASS_TASK = 48
 
 
+@dataclasses.dataclass
+class _DateWindow:
+    """A [lo, hi] bounds pair for Python-side date filtering.
+
+    `lo` and `hi` are timezone-aware datetimes (UTC) or None when the bound is
+    open. `hi` is inclusive; `lo` is inclusive.
+    """
+
+    lo: datetime | None
+    hi: datetime | None
+
+
 def _safe_dasl(query: str) -> str:
     """Sanitize a string for use in a DASL LIKE filter value.
 
@@ -32,6 +44,13 @@ def _safe_dasl(query: str) -> str:
 def _parse_date(date_str: str) -> datetime:
     """Parse ISO 8601 date string like '2026-02-25 14:00' or '2026-02-25T14:00:00'."""
     return datetime.fromisoformat(date_str)
+
+
+def _jet_datetime(dt: datetime, *, order: int | None = None) -> str:
+    """Format *dt* for a Jet restriction honoring the system short-date order."""
+    effective = _locale_date_order() if order is None else order
+    fmt = {0: "%m/%d/%Y", 1: "%d/%m/%Y", 2: "%Y/%m/%d"}[effective]
+    return dt.strftime(f"{fmt} %H:%M")
 
 
 @lru_cache(maxsize=1)
@@ -62,29 +81,10 @@ def _locale_date_order() -> int:
     return 0
 
 
-def _jet_datetime(dt: datetime, *, order: int | None = None) -> str:
-    """Format *dt* for a Jet restriction honoring the system short-date order."""
-    effective = _locale_date_order() if order is None else order
-    fmt = {0: "%m/%d/%Y", 1: "%d/%m/%Y", 2: "%Y/%m/%d"}[effective]
-    return dt.strftime(f"{fmt} %H:%M")
-
-
 def _dasl_utc(dt: datetime) -> str:
     """Format *dt* as a UTC ISO literal, as required by DASL date comparisons."""
     local = dt.astimezone() if dt.tzinfo is None else dt
     return local.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-@dataclasses.dataclass
-class _DateWindow:
-    """A [lo, hi] bounds pair for Python-side date filtering.
-
-    `lo` and `hi` are timezone-aware datetimes (UTC) or None when the bound is
-    open. `hi` is inclusive; `lo` is inclusive.
-    """
-
-    lo: datetime | None
-    hi: datetime | None
 
 
 def _parse_date_window(start_date: str, end_date: str) -> _DateWindow:
@@ -142,6 +142,14 @@ def _require_class(item: Any, expected_class: int, label: str) -> None:
         raise BackendError(f"Entry ID does not refer to a {label}.")
 
 
+def _require_store(namespace: Namespace, account: str = "") -> Store:
+    """Resolve store, raising BackendError if not found."""
+    store = _resolve_store(namespace, account)
+    if store is None:
+        raise BackendError(f"Account '{account}' not found. Use list_accounts to see available accounts.")
+    return store
+
+
 def _resolve_store(namespace: Namespace, account: str = "") -> Store | None:
     """Resolve an account name to an Outlook Store object.
 
@@ -155,29 +163,6 @@ def _resolve_store(namespace: Namespace, account: str = "") -> Store | None:
         store = namespace.Stores.Item(i + 1)
         if account_lower in store.DisplayName.lower():
             return store
-    return None
-
-
-def _require_store(namespace: Namespace, account: str = "") -> Store:
-    """Resolve store, raising BackendError if not found."""
-    store = _resolve_store(namespace, account)
-    if store is None:
-        raise BackendError(f"Account '{account}' not found. Use list_accounts to see available accounts.")
-    return store
-
-
-def _walk_folders(parent: Folder, name_lower: str) -> Folder | None:
-    """Recursively search subfolders of parent for a folder matching name_lower."""
-    for i in range(parent.Folders.Count):
-        try:
-            f: Folder = parent.Folders.Item(i + 1)
-            if f.Name.lower() == name_lower:
-                return f
-            found = _walk_folders(f, name_lower)
-            if found:
-                return found
-        except Exception:  # noqa: S112
-            continue
     return None
 
 
@@ -229,3 +214,18 @@ def _resolve_folder(namespace: Namespace, folder_name: str, store: Store | None 
             continue
 
     return _walk_folders(root, folder_lower)
+
+
+def _walk_folders(parent: Folder, name_lower: str) -> Folder | None:
+    """Recursively search subfolders of parent for a folder matching name_lower."""
+    for i in range(parent.Folders.Count):
+        try:
+            f: Folder = parent.Folders.Item(i + 1)
+            if f.Name.lower() == name_lower:
+                return f
+            found = _walk_folders(f, name_lower)
+            if found:
+                return found
+        except Exception:  # noqa: S112
+            continue
+    return None

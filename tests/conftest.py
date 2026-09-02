@@ -16,10 +16,15 @@ from collections.abc import Iterator
 from typing import Any, Never
 
 import pytest
+import pythoncom
+import win32com.client
 from _pytest.config import Config
 
 from outlook_desktop_mcp import server
 from outlook_desktop_mcp.backends.base import Backend
+from outlook_desktop_mcp.backends.mac import AppleScriptBackend
+from outlook_desktop_mcp.backends.win import ComBackend
+from outlook_desktop_mcp.platform import Platform, current_platform
 
 # Test modules that drive a live Outlook COM / AppleScript session. They are
 # manual validation scripts (by the upstream author) that require Windows/macOS
@@ -113,8 +118,6 @@ class _UnavailableBackend(Backend):
 
 def _install_backend() -> None:
     """Install the real backend on Windows/macOS, a stub elsewhere."""
-    from outlook_desktop_mcp.platform import Platform, current_platform  # noqa: PLC0415
-
     try:
         platform = current_platform()
     except RuntimeError:
@@ -122,49 +125,14 @@ def _install_backend() -> None:
         server.set_backend(_UnavailableBackend(), platform=Platform.WINDOWS)
         return
     if platform == Platform.DARWIN:
-        from outlook_desktop_mcp.backends.mac import AppleScriptBackend  # noqa: PLC0415
-
         server.set_backend(AppleScriptBackend(), platform=platform)
     elif platform == Platform.WINDOWS:
-        from outlook_desktop_mcp.backends.win import ComBackend  # noqa: PLC0415
-
         server.set_backend(ComBackend(), platform=platform)
     else:
         server.set_backend(_UnavailableBackend(), platform=Platform.WINDOWS)
 
 
 _install_backend()
-
-
-@pytest.fixture(autouse=True)
-def _ensure_backend_installed() -> None:
-    """Guarantee a backend is installed for every test (idempotent)."""
-    if server.backend is None:
-        _install_backend()
-
-
-# --- COM fixtures for the *_com_test validation scripts ---
-
-
-@pytest.fixture(scope="session")
-def outlook() -> Iterator[Any]:
-    """Session-scoped live Outlook Application COM object (Windows only)."""
-    if sys.platform != "win32":
-        pytest.skip("Requires a live Outlook COM session (Windows only).")
-    import pythoncom  # noqa: PLC0415
-    import win32com.client  # noqa: PLC0415
-
-    pythoncom.CoInitialize()
-    try:
-        yield win32com.client.Dispatch("Outlook.Application")
-    finally:
-        pythoncom.CoUninitialize()
-
-
-@pytest.fixture(scope="session")
-def namespace(outlook: Any) -> Any:
-    """Session-scoped MAPI namespace bound to the live Outlook session."""
-    return outlook.GetNamespace("MAPI")
 
 
 # Tests that MUTATE the live Outlook mailbox (send/create/update/delete/move/
@@ -186,9 +154,33 @@ _WRITE_TEST_NAMES = {
 }
 
 
-def _write_tests_enabled() -> bool:
-    """Mutating live-Outlook tests opt-in via OUTLOOK_MCP_WRITE_TESTS."""
-    return os.environ.get("OUTLOOK_MCP_WRITE_TESTS", "").strip().lower() in ("1", "true", "yes")
+@pytest.fixture(autouse=True)
+def _ensure_backend_installed() -> None:
+    """Guarantee a backend is installed for every test (idempotent)."""
+    if server.backend is None:
+        _install_backend()
+
+
+@pytest.fixture(scope="session")
+def namespace(outlook: Any) -> Any:
+    """Session-scoped MAPI namespace bound to the live Outlook session."""
+    return outlook.GetNamespace("MAPI")
+
+
+# --- COM fixtures for the *_com_test validation scripts ---
+
+
+@pytest.fixture(scope="session")
+def outlook() -> Iterator[Any]:
+    """Session-scoped live Outlook Application COM object (Windows only)."""
+    if sys.platform != "win32":
+        pytest.skip("Requires a live Outlook COM session (Windows only).")
+
+    pythoncom.CoInitialize()
+    try:
+        yield win32com.client.Dispatch("Outlook.Application")
+    finally:
+        pythoncom.CoUninitialize()
 
 
 def pytest_collection_modifyitems(config: Config, items: list[Any]) -> None:  # noqa: ANN001
@@ -202,3 +194,8 @@ def pytest_collection_modifyitems(config: Config, items: list[Any]) -> None:  # 
             item.add_marker(skip_com)
         elif not write_enabled and item.name.split("[")[0] in _WRITE_TEST_NAMES:
             item.add_marker(skip_write)
+
+
+def _write_tests_enabled() -> bool:
+    """Mutating live-Outlook tests opt-in via OUTLOOK_MCP_WRITE_TESTS."""
+    return os.environ.get("OUTLOOK_MCP_WRITE_TESTS", "").strip().lower() in ("1", "true", "yes")

@@ -18,6 +18,7 @@ CLI:
 Exits non-zero if the input file is malformed or the new version doesn't
 outrank the existing one.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,27 +32,6 @@ VERSION_FILE = ROOT / "VERSION"
 
 # CalVer regex: 2026.8.0
 _CALVER_RE = re.compile(r"^(\d{4})\.(\d{1,2})\.(\d+)$")
-
-
-def _parse(value: str) -> tuple[int, int, int]:
-    match = _CALVER_RE.match(value.strip())
-    if not match:
-        raise SystemExit(f"VERSION file contains a non-CalVer value: {value!r}")
-    year, month, patch = match.groups()
-    return int(year), int(month), int(patch)
-
-
-def next_version(today: dt.date, current: str) -> str:
-    """Compute the next CalVer string.
-
-    If the current version is already in the current calendar month, bump
-    only the patch number. Otherwise start a fresh `YYYY.M.0`.
-    """
-    year, month, _ = _parse(current)
-    if (year, month) == (today.year, today.month):
-        _, _, patch = _parse(current)
-        return f"{today.year}.{today.month}.{patch + 1}"
-    return f"{today.year}.{today.month}.0"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -79,6 +59,27 @@ def main(argv: list[str] | None = None) -> int:
         args.version_file.write_text(new + "\n", encoding="utf-8")
     print(new)
     return 0
+
+
+def next_version(today: dt.date, current: str) -> str:
+    """Compute the next CalVer string.
+
+    If the current version is already in the current calendar month, bump
+    only the patch number. Otherwise start a fresh `YYYY.M.0`.
+    """
+    year, month, _ = _parse(current)
+    if (year, month) == (today.year, today.month):
+        _, _, patch = _parse(current)
+        return f"{today.year}.{today.month}.{patch + 1}"
+    return f"{today.year}.{today.month}.0"
+
+
+def _parse(value: str) -> tuple[int, int, int]:
+    match = _CALVER_RE.match(value.strip())
+    if not match:
+        raise SystemExit(f"VERSION file contains a non-CalVer value: {value!r}")
+    year, month, patch = match.groups()
+    return int(year), int(month), int(patch)
 
 
 if __name__ == "__main__":

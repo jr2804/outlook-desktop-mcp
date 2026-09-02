@@ -64,7 +64,7 @@ async def get_task(bridge: Any, get_item: Callable, entry_id: str, account: str)
     return await bridge.call(_get)
 
 
-async def create_task(  # noqa: PLC0415
+async def create_task(
     bridge: Any,
     subject: str,
     body: str,

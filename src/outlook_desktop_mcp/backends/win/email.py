@@ -52,7 +52,7 @@ async def list_accounts(bridge: Any) -> list[AccountInfo]:
     return await bridge.call(_list)
 
 
-async def compose_email(  # noqa: PLC0415
+async def compose_email(
     bridge: Any,
     to: str,
     subject: str,
@@ -88,7 +88,7 @@ async def compose_email(  # noqa: PLC0415
     return await bridge.call(_compose)
 
 
-async def list_emails(  # noqa: PLC0415
+async def list_emails(
     bridge: Any,
     folder: str,
     count: int,
@@ -208,7 +208,7 @@ async def move_email(bridge: Any, entry_id: str, target_folder: str, account: st
     return await bridge.call(_move)
 
 
-async def reply_email(  # noqa: PLC0415
+async def reply_email(
     bridge: Any,
     get_item: Callable,
     entry_id: str,
@@ -278,7 +278,7 @@ async def list_folders(bridge: Any, folder: str, max_depth: int, account: str) -
     return await bridge.call(_list)
 
 
-async def search_emails(  # noqa: PLC0415
+async def search_emails(
     bridge: Any,
     query: str,
     folder: str,

@@ -165,16 +165,6 @@ class ComBackend(Backend):
         """Surface COM HRESULT detail (Windows-only override)."""
         return f"{action}: {format_com_error(e)}"
 
-    # --- shared COM helpers (run on the bridge thread) ---
-
-    @staticmethod
-    def _get_item(namespace: Namespace, entry_id: str, account: str) -> Any:
-        """Fetch an item by EntryID, optionally scoped to a store."""
-        if account:
-            store = _require_store(namespace, account)
-            return namespace.GetItemFromID(entry_id, store.StoreID)
-        return namespace.GetItemFromID(entry_id)
-
     # --- accounts ---
 
     async def list_accounts(self) -> list[AccountInfo]:
@@ -182,7 +172,7 @@ class ComBackend(Backend):
 
     # --- email ---
 
-    async def compose_email(  # noqa: PLC0415
+    async def compose_email(
         self,
         to: str,
         subject: str,
@@ -195,7 +185,7 @@ class ComBackend(Backend):
     ) -> SentResult | DraftSavedResult:
         return await _compose_email(self.bridge, to, subject, body, cc, bcc, html_body, account, send)
 
-    async def list_emails(  # noqa: PLC0415
+    async def list_emails(
         self,
         folder: str,
         count: int,
@@ -224,7 +214,7 @@ class ComBackend(Backend):
     async def move_email(self, entry_id: str, target_folder: str, account: str) -> MovedResult:
         return await _move_email(self.bridge, entry_id, target_folder, account)
 
-    async def reply_email(  # noqa: PLC0415
+    async def reply_email(
         self,
         entry_id: str,
         body: str,
@@ -238,7 +228,7 @@ class ComBackend(Backend):
     async def list_folders(self, folder: str, max_depth: int, account: str) -> list[FolderInfo]:
         return await _list_folders(self.bridge, folder, max_depth, account)
 
-    async def search_emails(  # noqa: PLC0415
+    async def search_emails(
         self,
         query: str,
         folder: str,
@@ -264,7 +254,7 @@ class ComBackend(Backend):
     async def get_event(self, entry_id: str, account: str) -> EventFull:
         return await _get_event(self.bridge, self._get_item, entry_id, account)
 
-    async def create_event(  # noqa: PLC0415
+    async def create_event(
         self,
         subject: str,
         start: str,
@@ -278,7 +268,7 @@ class ComBackend(Backend):
     ) -> EventCreatedResult:
         return await _create_event(self.bridge, subject, start, end, location, body, all_day, reminder_minutes, account, folder)
 
-    async def create_meeting(  # noqa: PLC0415
+    async def create_meeting(
         self,
         subject: str,
         start: str,
@@ -291,7 +281,7 @@ class ComBackend(Backend):
     ) -> MeetingSentResult:
         return await _create_meeting(self.bridge, subject, start, end, required_attendees, location, body, optional_attendees, account)
 
-    async def update_event(  # noqa: PLC0415
+    async def update_event(
         self,
         entry_id: str,
         subject: str,
@@ -309,7 +299,7 @@ class ComBackend(Backend):
     async def respond_to_meeting(self, entry_id: str, response: str, account: str) -> MeetingResponseResult:
         return await _respond_to_meeting(self.bridge, self._get_item, entry_id, response, account)
 
-    async def search_events(  # noqa: PLC0415
+    async def search_events(
         self,
         query: str,
         start_date: str,
@@ -333,7 +323,7 @@ class ComBackend(Backend):
     async def get_task(self, entry_id: str, account: str) -> TaskFull:
         return await _get_task(self.bridge, self._get_item, entry_id, account)
 
-    async def create_task(  # noqa: PLC0415
+    async def create_task(
         self,
         subject: str,
         body: str,
@@ -387,3 +377,13 @@ class ComBackend(Backend):
 
     async def set_out_of_office(self, enabled: bool, message: str, account: str) -> OofSetResult:
         return await _set_out_of_office(self.bridge, enabled, message, account)
+
+    # --- shared COM helpers (run on the bridge thread) ---
+
+    @staticmethod
+    def _get_item(namespace: Namespace, entry_id: str, account: str) -> Any:
+        """Fetch an item by EntryID, optionally scoped to a store."""
+        if account:
+            store = _require_store(namespace, account)
+            return namespace.GetItemFromID(entry_id, store.StoreID)
+        return namespace.GetItemFromID(entry_id)

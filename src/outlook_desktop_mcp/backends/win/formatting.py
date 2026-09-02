@@ -12,16 +12,19 @@ from outlook_desktop_mcp.tools._folder_constants import (
 )
 
 
-def truncate(text: str, max_length: int = 2000) -> str:
-    if len(text) <= max_length:
-        return text
-    return text[:max_length] + "\n... [truncated]"
-
-
 def strip_html(html: str) -> str:
     text = re.sub(r"<[^>]+>", "", html)
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+def format_email_full(item: Any, body_max_length: int = 5000) -> dict:
+    """Extract full email details including body."""
+    result = format_email_summary(item)
+    result["to"] = item.To or ""
+    result["cc"] = item.CC or ""
+    result["body"] = truncate(item.Body or "", body_max_length)
+    return result
 
 
 def format_email_summary(item: Any) -> dict:
@@ -38,12 +41,14 @@ def format_email_summary(item: Any) -> dict:
     }
 
 
-def format_email_full(item: Any, body_max_length: int = 5000) -> dict:
-    """Extract full email details including body."""
-    result = format_email_summary(item)
-    result["to"] = item.To or ""
-    result["cc"] = item.CC or ""
+def format_event_full(item: Any, body_max_length: int = 5000) -> dict:
+    """Full event details including body."""
+    result = format_event_summary(item)
     result["body"] = truncate(item.Body or "", body_max_length)
+    result["reminder_set"] = bool(item.ReminderSet)
+    result["reminder_minutes"] = item.ReminderMinutesBeforeStart if item.ReminderSet else None
+    result["categories"] = item.Categories or ""
+    result["response_status"] = RESPONSE_NAMES.get(item.ResponseStatus, "unknown")
     return result
 
 
@@ -69,15 +74,19 @@ def format_event_summary(item: Any) -> dict:
     }
 
 
-def format_event_full(item: Any, body_max_length: int = 5000) -> dict:
-    """Full event details including body."""
-    result = format_event_summary(item)
+def format_task_full(item: Any, body_max_length: int = 5000) -> dict:
+    """Full task details including body."""
+    result = format_task_summary(item)
     result["body"] = truncate(item.Body or "", body_max_length)
     result["reminder_set"] = bool(item.ReminderSet)
-    result["reminder_minutes"] = item.ReminderMinutesBeforeStart if item.ReminderSet else None
-    result["categories"] = item.Categories or ""
-    result["response_status"] = RESPONSE_NAMES.get(item.ResponseStatus, "unknown")
+    result["date_completed"] = str(item.DateCompleted) if item.Complete else None
     return result
+
+
+def truncate(text: str, max_length: int = 2000) -> str:
+    if len(text) <= max_length:
+        return text
+    return text[:max_length] + "\n... [truncated]"
 
 
 # --- Task formatting ---
@@ -97,12 +106,3 @@ def format_task_summary(item: Any) -> dict:
         "categories": item.Categories or "",
         "owner": item.Owner or "",
     }
-
-
-def format_task_full(item: Any, body_max_length: int = 5000) -> dict:
-    """Full task details including body."""
-    result = format_task_summary(item)
-    result["body"] = truncate(item.Body or "", body_max_length)
-    result["reminder_set"] = bool(item.ReminderSet)
-    result["date_completed"] = str(item.DateCompleted) if item.Complete else None
-    return result

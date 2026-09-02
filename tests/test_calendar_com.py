@@ -11,10 +11,8 @@ import sys
 from datetime import datetime, timedelta
 from typing import Any
 
-
-def log(msg: str) -> None:
-    print(msg, file=sys.stderr, flush=True)
-
+import pythoncom
+import win32com.client
 
 # Will hold EntryID of the test appointment we create, so later tests can use it
 _created_entry_id = None
@@ -23,6 +21,54 @@ _created_entry_id = None
 def test_connect(outlook: Any, namespace: Any) -> None:
     """Test 0: Connect to running Outlook via COM."""
     log(f"  Connected to store: {namespace.DefaultStore.DisplayName}")
+
+
+def main() -> None:
+    log("=" * 60)
+    log("Outlook Desktop MCP - Calendar COM Validation")
+    log("=" * 60)
+    log("")
+
+    log("--- Test 0: Connect to Outlook COM ---")
+    try:
+        pythoncom.CoInitialize()
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        namespace = outlook.GetNamespace("MAPI")
+        log("  PASS")
+    except Exception as e:
+        log(f"  FAIL: {e}")
+        log("\nIs Outlook Desktop (Classic) running?")
+        sys.exit(1)
+
+    tests = [
+        ("List Upcoming Events (7 days)", lambda: test_list_upcoming_events(namespace)),
+        ("Read Event Details", lambda: test_read_event_details(namespace)),
+        ("Create Appointment", lambda: test_create_appointment(outlook)),
+        ("Create Meeting (send invite)", lambda: test_create_meeting(outlook)),
+        ("Update Event", lambda: test_update_event(namespace)),
+        ("Delete Event", lambda: test_delete_event(namespace)),
+        ("Search Events", lambda: test_search_events(namespace)),
+    ]
+
+    passed = 1  # Test 0 already passed
+    total = len(tests) + 1
+
+    for name, fn in tests:
+        log(f"\n--- Test {passed + 1}: {name} ---")
+        try:
+            fn()
+            passed += 1
+            log("  PASS")
+        except Exception as e:
+            log(f"  FAIL: {e}")
+
+    log("")
+    log("=" * 60)
+    log(f"Results: {passed}/{total} passed")
+    log("=" * 60)
+
+    pythoncom.CoUninitialize()
+    sys.exit(0 if passed == total else 1)
 
 
 def test_list_upcoming_events(namespace: Any, days: int = 7) -> None:
@@ -195,57 +241,8 @@ def test_search_events(namespace: Any, keyword: str = "MCP") -> None:
     log(f"  Found {count} events matching '{keyword}'")
 
 
-def main() -> None:
-    log("=" * 60)
-    log("Outlook Desktop MCP - Calendar COM Validation")
-    log("=" * 60)
-    log("")
-
-    log("--- Test 0: Connect to Outlook COM ---")
-    try:
-        import pythoncom  # noqa: PLC0415
-        import win32com.client  # noqa: PLC0415
-
-        pythoncom.CoInitialize()
-        outlook = win32com.client.Dispatch("Outlook.Application")
-        namespace = outlook.GetNamespace("MAPI")
-        log("  PASS")
-    except Exception as e:
-        log(f"  FAIL: {e}")
-        log("\nIs Outlook Desktop (Classic) running?")
-        sys.exit(1)
-
-    tests = [
-        ("List Upcoming Events (7 days)", lambda: test_list_upcoming_events(namespace)),
-        ("Read Event Details", lambda: test_read_event_details(namespace)),
-        ("Create Appointment", lambda: test_create_appointment(outlook)),
-        ("Create Meeting (send invite)", lambda: test_create_meeting(outlook)),
-        ("Update Event", lambda: test_update_event(namespace)),
-        ("Delete Event", lambda: test_delete_event(namespace)),
-        ("Search Events", lambda: test_search_events(namespace)),
-    ]
-
-    passed = 1  # Test 0 already passed
-    total = len(tests) + 1
-
-    for name, fn in tests:
-        log(f"\n--- Test {passed + 1}: {name} ---")
-        try:
-            fn()
-            passed += 1
-            log("  PASS")
-        except Exception as e:
-            log(f"  FAIL: {e}")
-
-    log("")
-    log("=" * 60)
-    log(f"Results: {passed}/{total} passed")
-    log("=" * 60)
-
-    import pythoncom  # noqa: PLC0415
-
-    pythoncom.CoUninitialize()
-    sys.exit(0 if passed == total else 1)
+def log(msg: str) -> None:
+    print(msg, file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":

@@ -2,13 +2,13 @@
 
 import logging
 
+import pythoncom
+
 _logger = logging.getLogger("outlook_desktop_mcp.backends.win.errors")
 
 
 def format_com_error(e: Exception) -> str:
     try:
-        import pythoncom  # ty:ignore[unresolved-import]  # noqa: PLC0415
-
         if isinstance(e, pythoncom.com_error):
             hr, msg, exc, arg = e.args
             details = exc[2] if exc else "No details"

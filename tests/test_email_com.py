@@ -11,15 +11,65 @@ import sys
 import time
 from typing import Any
 
-
-def log(msg: str) -> None:
-    print(msg, file=sys.stderr)
+import pythoncom
+import win32com.client
 
 
 def test_connect(outlook: Any, namespace: Any) -> None:
     """Test 1: Connect to running Outlook via COM."""
     log(f"  Connected to store: {namespace.DefaultStore.DisplayName}")
     log(f"  Current user: {namespace.CurrentUser.Name}")
+
+
+def main() -> None:
+    log("=" * 60)
+    log("Outlook Desktop MCP - Phase 1 COM Validation")
+    log("=" * 60)
+    log("")
+
+    # Test 1 must succeed for all others to run
+    log("--- Test 1: Connect to Outlook COM ---")
+    try:
+        pythoncom.CoInitialize()
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        namespace = outlook.GetNamespace("MAPI")
+        log("  PASS")
+    except Exception as e:
+        log(f"  FAIL: {e}")
+        log("")
+        log("Is Outlook Desktop (Classic) running?")
+        sys.exit(1)
+
+    tests = [
+        ("List Default Folders", lambda: test_list_folders(namespace)),
+        ("Read Inbox (top 5)", lambda: test_read_inbox(namespace)),
+        ("Filter Unread Emails", lambda: test_filter_unread(namespace)),
+        ("Send Test Email", lambda: test_send_email(outlook)),
+        ("Mark Read/Unread Cycle", lambda: test_mark_read_unread(namespace)),
+        ("Move to Archive & Back", lambda: test_move_to_archive(namespace)),
+        ("Search by Subject", lambda: test_search(namespace)),
+    ]
+
+    passed = 1  # Test 1 already passed
+    total = len(tests) + 1
+
+    for name, fn in tests:
+        log(f"\n--- Test {passed + 1}: {name} ---")
+        try:
+            fn()
+            passed += 1
+            log("  PASS")
+        except Exception as e:
+            log(f"  FAIL: {e}")
+
+    log("")
+    log("=" * 60)
+    log(f"Results: {passed}/{total} passed")
+    log("=" * 60)
+
+    pythoncom.CoUninitialize()
+
+    sys.exit(0 if passed == total else 1)
 
 
 def test_list_folders(namespace: Any) -> None:
@@ -166,60 +216,8 @@ def test_search(namespace: Any, keyword: str = "test") -> None:
         log(f"  First match: {first.Subject}")
 
 
-def main() -> None:
-    log("=" * 60)
-    log("Outlook Desktop MCP - Phase 1 COM Validation")
-    log("=" * 60)
-    log("")
-
-    # Test 1 must succeed for all others to run
-    log("--- Test 1: Connect to Outlook COM ---")
-    try:
-        import pythoncom  # noqa: PLC0415
-        import win32com.client  # noqa: PLC0415
-
-        pythoncom.CoInitialize()
-        outlook = win32com.client.Dispatch("Outlook.Application")
-        namespace = outlook.GetNamespace("MAPI")
-        log("  PASS")
-    except Exception as e:
-        log(f"  FAIL: {e}")
-        log("")
-        log("Is Outlook Desktop (Classic) running?")
-        sys.exit(1)
-
-    tests = [
-        ("List Default Folders", lambda: test_list_folders(namespace)),
-        ("Read Inbox (top 5)", lambda: test_read_inbox(namespace)),
-        ("Filter Unread Emails", lambda: test_filter_unread(namespace)),
-        ("Send Test Email", lambda: test_send_email(outlook)),
-        ("Mark Read/Unread Cycle", lambda: test_mark_read_unread(namespace)),
-        ("Move to Archive & Back", lambda: test_move_to_archive(namespace)),
-        ("Search by Subject", lambda: test_search(namespace)),
-    ]
-
-    passed = 1  # Test 1 already passed
-    total = len(tests) + 1
-
-    for name, fn in tests:
-        log(f"\n--- Test {passed + 1}: {name} ---")
-        try:
-            fn()
-            passed += 1
-            log("  PASS")
-        except Exception as e:
-            log(f"  FAIL: {e}")
-
-    log("")
-    log("=" * 60)
-    log(f"Results: {passed}/{total} passed")
-    log("=" * 60)
-
-    import pythoncom  # noqa: PLC0415
-
-    pythoncom.CoUninitialize()
-
-    sys.exit(0 if passed == total else 1)
+def log(msg: str) -> None:
+    print(msg, file=sys.stderr)
 
 
 if __name__ == "__main__":

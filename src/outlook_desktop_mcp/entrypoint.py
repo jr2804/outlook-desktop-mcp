@@ -8,6 +8,8 @@ installed into the unified server via ``server.set_backend`` before
 
 from __future__ import annotations
 
+from outlook_desktop_mcp import server
+from outlook_desktop_mcp.backends.mac import AppleScriptBackend
 from outlook_desktop_mcp.platform import Platform, current_platform
 
 
@@ -16,15 +18,11 @@ def main() -> None:
     platform = current_platform()
 
     if platform == Platform.DARWIN:
-        from outlook_desktop_mcp.backends.mac import AppleScriptBackend  # noqa: PLC0415
-
         backend = AppleScriptBackend()
     else:  # Platform.WINDOWS
         from outlook_desktop_mcp.backends.win import ComBackend  # noqa: PLC0415
 
         backend = ComBackend()
-
-    from outlook_desktop_mcp import server  # noqa: PLC0415
 
     server.set_backend(backend, platform=platform)
     server.main()
