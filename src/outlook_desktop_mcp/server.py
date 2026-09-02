@@ -20,7 +20,8 @@ import sys
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
+from fastmcp.tools.base import Tool
 from pydantic import BaseModel
 
 from outlook_desktop_mcp.backends.base import Backend, BackendError
@@ -71,8 +72,9 @@ def set_backend(b: Backend, platform: Platform) -> None:
     live_mcp = FastMCP("outlook-desktop-mcp", instructions=build_instructions(platform))
 
     # Re-register every tool that was bound to the template at import time.
-    for handler in _template_mcp._tool_manager._tools.values():
-        live_mcp.add_tool(handler.fn, name=handler.name, description=handler.description)
+    for tool in _template_mcp._local_provider._components.values():
+        if isinstance(tool, Tool):
+            live_mcp.add_tool(tool)
 
     mcp = live_mcp
 
