@@ -16,15 +16,13 @@ async def list_attachments(bridge: Any, get_item: Callable, entry_id: str, accou
     def _list(outlook: Any, namespace: Namespace) -> list[AttachmentInfo]:
         item = get_item(namespace, entry_id, account)
         return [
-            AttachmentInfo(index=i + 1, filename=att.FileName, size=att.Size)
-            for i in range(item.Attachments.Count)
-            for att in [item.Attachments.Item(i + 1)]
+            AttachmentInfo(index=i + 1, filename=att.FileName, size=att.Size) for i in range(item.Attachments.Count) for att in [item.Attachments.Item(i + 1)]
         ]
 
     return await bridge.call(_list)
 
 
-async def save_attachment(  # noqa: PLC0415
+async def save_attachment(
     bridge: Any,
     get_item: Callable,
     entry_id: str,
@@ -38,11 +36,10 @@ async def save_attachment(  # noqa: PLC0415
             raise BackendError(f"Only {item.Attachments.Count} attachment(s), requested index {attachment_index}")
 
         att = item.Attachments.Item(attachment_index)
-        if not save_directory:
-            save_directory = os.path.join(os.path.expanduser("~"), "Downloads")
+        directory = save_directory or os.path.join(os.path.expanduser("~"), "Downloads")
 
-        save_directory = os.path.realpath(save_directory)
-        os.makedirs(save_directory, exist_ok=True)
+        directory = os.path.realpath(directory)
+        os.makedirs(directory, exist_ok=True)
 
         # Strip path separators and dangerous characters from filename
         safe_name = os.path.basename(att.FileName)
@@ -50,11 +47,11 @@ async def save_attachment(  # noqa: PLC0415
         if not safe_name:
             safe_name = "attachment"
 
-        save_path = os.path.join(save_directory, safe_name)
+        save_path = os.path.join(directory, safe_name)
 
         # Ensure final path is still inside the intended directory
         real_path = os.path.realpath(save_path)
-        if not real_path.startswith(save_directory + os.sep) and real_path != save_directory:
+        if not real_path.startswith(directory + os.sep) and real_path != directory:
             raise BackendError("Attachment filename would escape the target directory.")
 
         att.SaveAsFile(save_path)

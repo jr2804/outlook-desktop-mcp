@@ -10,16 +10,78 @@ import sys
 from datetime import datetime, timedelta
 from typing import Any
 
+import pythoncom
+import win32com.client
 
-def log(msg: str) -> None:
-    print(msg, file=sys.stderr, flush=True)
-
-
-_created_task_id = None
+_created_task_id: str | None = None
+_att_entry_id: str | None = None
 
 
 def test_connect(outlook: Any, namespace: Any) -> None:
     log(f"  Connected: {namespace.DefaultStore.DisplayName}")
+
+
+def main() -> None:
+    log("=" * 60)
+    log("Outlook Desktop MCP - Extras COM Validation")
+    log("=" * 60)
+
+    log("\n--- Connect ---")
+    try:
+        pythoncom.CoInitialize()
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        namespace = outlook.GetNamespace("MAPI")
+        log("  PASS")
+    except Exception as e:
+        log(f"  FAIL: {e}")
+        sys.exit(1)
+
+    tests = [
+        ("List Tasks", lambda: test_list_tasks(namespace)),
+        ("Create Task", lambda: test_create_task(outlook)),
+        ("Complete Task", lambda: test_complete_task(namespace)),
+        ("Delete Task", lambda: test_delete_task(namespace)),
+        ("List Attachments", lambda: test_list_attachments(namespace)),
+        ("Save Attachment", lambda: test_save_attachment(namespace)),
+        ("List Categories", lambda: test_list_categories(namespace)),
+        ("Set/Restore Category", lambda: test_set_category(namespace)),
+        ("List Rules", lambda: test_list_rules(namespace)),
+        ("Get OOO Status", lambda: test_get_ooo_status(namespace)),
+    ]
+
+    # Pre-run: find an email with attachments for test 6
+    global _att_entry_id  # noqa: PLW0603
+    log("\n--- Pre-scan: Find email with attachments ---")
+    try:
+        _att_entry_id = _find_attachment_email(namespace)
+        log("  DONE")
+    except Exception as e:
+        _att_entry_id = None
+        log(f"  {e}")
+
+    passed = 1  # connect passed
+    total = len(tests) + 1
+
+    # Skip test 5 (List Attachments) since we did it in pre-scan
+    for i, (name, fn) in enumerate(tests):
+        if i == 4:  # skip duplicate list attachments
+            passed += 1
+            continue
+        log(f"\n--- Test {i + 2}: {name} ---")
+        try:
+            fn()
+            passed += 1
+            log("  PASS")
+        except Exception as e:
+            log(f"  FAIL: {e}")
+
+    log("")
+    log("=" * 60)
+    log(f"Results: {passed}/{total} passed")
+    log("=" * 60)
+
+    pythoncom.CoUninitialize()
+    sys.exit(0 if passed == total else 1)
 
 
 # ===== TASKS =====
@@ -75,22 +137,6 @@ def test_delete_task(namespace: Any) -> None:
     log(f"  Deleted: '{subject}'")
 
 
-# ===== ATTACHMENTS =====
-
-
-def _find_attachment_email(namespace: Any) -> str | None:
-    """Return the EntryID of the most recent inbox email with attachments."""
-    inbox = namespace.GetDefaultFolder(6)
-    items = inbox.Items
-    items.Sort("[ReceivedTime]", True)
-
-    for i in range(min(50, items.Count)):
-        item = items.Item(i + 1)
-        if item.Attachments.Count > 0:
-            return item.EntryID
-    return None
-
-
 def test_list_attachments(namespace: Any) -> None:
     """Find an email with attachments and list them."""
     entry_id = _find_attachment_email(namespace)
@@ -123,6 +169,22 @@ def test_save_attachment(namespace: Any) -> None:
     if exists:
         os.remove(save_path)
         log("  Cleaned up test file")
+
+
+# ===== ATTACHMENTS =====
+
+
+def _find_attachment_email(namespace: Any) -> str | None:
+    """Return the EntryID of the most recent inbox email with attachments."""
+    inbox = namespace.GetDefaultFolder(6)
+    items = inbox.Items
+    items.Sort("[ReceivedTime]", True)
+
+    for i in range(min(50, items.Count)):
+        item = items.Item(i + 1)
+        if item.Attachments.Count > 0:
+            return item.EntryID
+    return None
 
 
 # ===== CATEGORIES =====
@@ -199,72 +261,8 @@ def test_get_ooo_status(namespace: Any) -> None:
             log(f"  Alternative also failed: {e2}")
 
 
-def main() -> None:
-    log("=" * 60)
-    log("Outlook Desktop MCP - Extras COM Validation")
-    log("=" * 60)
-
-    log("\n--- Connect ---")
-    try:
-        import pythoncom  # noqa: PLC0415
-        import win32com.client  # noqa: PLC0415
-
-        pythoncom.CoInitialize()
-        outlook = win32com.client.Dispatch("Outlook.Application")
-        namespace = outlook.GetNamespace("MAPI")
-        log("  PASS")
-    except Exception as e:
-        log(f"  FAIL: {e}")
-        sys.exit(1)
-
-    tests = [
-        ("List Tasks", lambda: test_list_tasks(namespace)),
-        ("Create Task", lambda: test_create_task(outlook)),
-        ("Complete Task", lambda: test_complete_task(namespace)),
-        ("Delete Task", lambda: test_delete_task(namespace)),
-        ("List Attachments", lambda: test_list_attachments(namespace)),
-        ("Save Attachment", lambda: test_save_attachment(namespace)),
-        ("List Categories", lambda: test_list_categories(namespace)),
-        ("Set/Restore Category", lambda: test_set_category(namespace)),
-        ("List Rules", lambda: test_list_rules(namespace)),
-        ("Get OOO Status", lambda: test_get_ooo_status(namespace)),
-    ]
-
-    # Pre-run: find an email with attachments for test 6
-    global _att_entry_id  # noqa: PLW0603
-    log("\n--- Pre-scan: Find email with attachments ---")
-    try:
-        _att_entry_id = _find_attachment_email(namespace)
-        log("  DONE")
-    except Exception as e:
-        _att_entry_id = None
-        log(f"  {e}")
-
-    passed = 1  # connect passed
-    total = len(tests) + 1
-
-    # Skip test 5 (List Attachments) since we did it in pre-scan
-    for i, (name, fn) in enumerate(tests):
-        if i == 4:  # skip duplicate list attachments
-            passed += 1
-            continue
-        log(f"\n--- Test {i + 2}: {name} ---")
-        try:
-            fn()
-            passed += 1
-            log("  PASS")
-        except Exception as e:
-            log(f"  FAIL: {e}")
-
-    log("")
-    log("=" * 60)
-    log(f"Results: {passed}/{total} passed")
-    log("=" * 60)
-
-    import pythoncom  # noqa: PLC0415
-
-    pythoncom.CoUninitialize()
-    sys.exit(0 if passed == total else 1)
+def log(msg: str) -> None:
+    print(msg, file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":

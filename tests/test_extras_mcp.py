@@ -12,16 +12,22 @@ import sys
 
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.types import CallToolResult, TextContent
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
 
 
-def log(msg: str) -> None:
-    print(msg, file=sys.stderr, flush=True)
+def tool_text(result: CallToolResult) -> str:
+    """Return the text of the first content block (tools return JSON text)."""
+    block = result.content[0]
+    if not isinstance(block, TextContent):
+        raise TypeError(f"Expected TextContent, got {type(block).__name__}")
+    return block.text
 
 
-async def run_tests() -> None:
+
+async def run_tests() -> bool:
     python_exe = r"C:\Development_Local\outlook-desktop-mcp\.venv\Scripts\python.exe"
     server_params = StdioServerParameters(
         command=python_exe,
@@ -84,7 +90,7 @@ async def run_tests() -> None:
                     "importance": "high",
                 },
             )
-            data = json.loads(result.content[0].text)
+            data = json.loads(tool_text(result))
             task_entry_id = data.get("entry_id")
             log(f"  Created: {data['subject']} (ID: {task_entry_id[:30]}...)")
             passed += 1
@@ -96,7 +102,7 @@ async def run_tests() -> None:
         log("\n--- Test 3: list_tasks ---")
         try:
             result = await session.call_tool("list_tasks", {"count": 5})
-            tasks = json.loads(result.content[0].text)
+            tasks = json.loads(tool_text(result))
             log(f"  Got {len(tasks)} tasks:")
             for t in tasks:
                 log(f"    - {t['subject']} ({t['status']})")
@@ -110,7 +116,7 @@ async def run_tests() -> None:
         try:
             assert task_entry_id
             result = await session.call_tool("get_task", {"entry_id": task_entry_id})
-            data = json.loads(result.content[0].text)
+            data = json.loads(tool_text(result))
             log(f"  Subject: {data['subject']}, Importance: {data['importance']}")
             passed += 1
             log("  PASS")
@@ -122,7 +128,7 @@ async def run_tests() -> None:
         try:
             assert task_entry_id
             result = await session.call_tool("complete_task", {"entry_id": task_entry_id})
-            log(f"  {result.content[0].text}")
+            log(f"  {tool_text(result)}")
             passed += 1
             log("  PASS")
         except Exception as e:
@@ -133,7 +139,7 @@ async def run_tests() -> None:
         try:
             assert task_entry_id
             result = await session.call_tool("delete_task", {"entry_id": task_entry_id})
-            log(f"  {result.content[0].text}")
+            log(f"  {tool_text(result)}")
             passed += 1
             log("  PASS")
         except Exception as e:
@@ -147,14 +153,14 @@ async def run_tests() -> None:
         try:
             # First get an email with attachments
             emails = await session.call_tool("list_emails", {"count": 50})
-            email_list = json.loads(emails.content[0].text)
+            email_list = json.loads(tool_text(emails))
             for e in email_list:
                 if e.get("has_attachments"):
                     att_entry_id = e["entry_id"]
                     break
             if att_entry_id:
                 result = await session.call_tool("list_attachments", {"entry_id": att_entry_id})
-                atts = json.loads(result.content[0].text)
+                atts = json.loads(tool_text(result))
                 log(f"  Found {len(atts)} attachment(s):")
                 for a in atts:
                     log(f"    [{a['index']}] {a['filename']} ({a['size']} bytes)")
@@ -178,7 +184,7 @@ async def run_tests() -> None:
                         "save_directory": temp_dir,
                     },
                 )
-                data = json.loads(result.content[0].text)
+                data = json.loads(tool_text(result))
                 log(f"  Saved: {data['path']} ({data['size']} bytes)")
                 # Clean up
                 if os.path.exists(data["path"]):
@@ -197,7 +203,7 @@ async def run_tests() -> None:
         log("\n--- Test 9: list_categories ---")
         try:
             result = await session.call_tool("list_categories", {})
-            cats = json.loads(result.content[0].text)
+            cats = json.loads(tool_text(result))
             log(f"  {len(cats)} categories available (showing first 5):")
             for c in cats[:5]:
                 log(f"    - {c['name']}")
@@ -211,15 +217,15 @@ async def run_tests() -> None:
         try:
             # Get first inbox email
             emails = await session.call_tool("list_emails", {"count": 1})
-            email_list = json.loads(emails.content[0].text)
+            email_list = json.loads(tool_text(emails))
             if email_list:
                 eid = email_list[0]["entry_id"]
                 # Set category
                 result = await session.call_tool("set_category", {"entry_id": eid, "categories": "MCP Test"})
-                log(f"  {result.content[0].text}")
+                log(f"  {tool_text(result)}")
                 # Clear it
                 result = await session.call_tool("set_category", {"entry_id": eid, "categories": ""})
-                log(f"  Cleared: {result.content[0].text}")
+                log(f"  Cleared: {tool_text(result)}")
             passed += 1
             log("  PASS")
         except Exception as e:
@@ -231,7 +237,7 @@ async def run_tests() -> None:
         log("\n--- Test 11: list_rules ---")
         try:
             result = await session.call_tool("list_rules", {})
-            rules = json.loads(result.content[0].text)
+            rules = json.loads(tool_text(result))
             log(f"  {len(rules)} rules:")
             for r in rules:
                 log(f"    [{r['index']}] {r['name']} (enabled: {r['enabled']})")
@@ -246,7 +252,7 @@ async def run_tests() -> None:
         log("\n--- Test 12: get_out_of_office ---")
         try:
             result = await session.call_tool("get_out_of_office", {})
-            data = json.loads(result.content[0].text)
+            data = json.loads(tool_text(result))
             log(f"  OOF status: {data['status']}")
             passed += 1
             log("  PASS")
@@ -258,6 +264,10 @@ async def run_tests() -> None:
     log(f"Results: {passed}/{total} passed")
     log("=" * 60)
     return passed == total
+
+
+def log(msg: str) -> None:
+    print(msg, file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":

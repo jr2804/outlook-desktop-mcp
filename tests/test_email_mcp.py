@@ -13,6 +13,7 @@ import sys
 
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.types import CallToolResult, TextContent
 
 # Ensure our package is importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -20,11 +21,16 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
 
 
-def log(msg: str) -> None:
-    print(msg, file=sys.stderr, flush=True)
+def tool_text(result: CallToolResult) -> str:
+    """Return the text of the first content block (tools return JSON text)."""
+    block = result.content[0]
+    if not isinstance(block, TextContent):
+        raise TypeError(f"Expected TextContent, got {type(block).__name__}")
+    return block.text
 
 
-async def run_tests() -> None:
+
+async def run_tests() -> bool:
     python_exe = r"C:\Development_Local\outlook-desktop-mcp\.venv\Scripts\python.exe"
 
     server_params = StdioServerParameters(
@@ -79,7 +85,7 @@ async def run_tests() -> None:
         log("\n--- Test 2: list_folders ---")
         try:
             result = await session.call_tool("list_folders", {"max_depth": 1})
-            content = result.content[0].text
+            content = tool_text(result)
             folders = json.loads(content)
             folder_names = [f["name"] for f in folders]
             log(f"  Top-level folders: {folder_names}")
@@ -94,7 +100,7 @@ async def run_tests() -> None:
         log("\n--- Test 3: list_emails (inbox, 3) ---")
         try:
             result = await session.call_tool("list_emails", {"folder": "inbox", "count": 3})
-            content = result.content[0].text
+            content = tool_text(result)
             emails = json.loads(content)
             log(f"  Got {len(emails)} emails:")
             for e in emails:
@@ -113,7 +119,7 @@ async def run_tests() -> None:
         try:
             assert first_entry_id, "No entry_id from previous test"
             result = await session.call_tool("read_email", {"entry_id": first_entry_id})
-            content = result.content[0].text
+            content = tool_text(result)
             email_data = json.loads(content)
             log(f"  Subject: {email_data['subject']}")
             log(f"  From: {email_data['sender_name']}")
@@ -128,7 +134,7 @@ async def run_tests() -> None:
         log("\n--- Test 5: search_emails ('Feedback') ---")
         try:
             result = await session.call_tool("search_emails", {"query": "Feedback", "folder": "inbox", "count": 5})
-            content = result.content[0].text
+            content = tool_text(result)
             results = json.loads(content)
             log(f"  Found {len(results)} results")
             for r in results:
@@ -150,7 +156,7 @@ async def run_tests() -> None:
                     "body": "Sent through the MCP server via stdio. If you see this, the MCP layer works!",
                 },
             )
-            content = result.content[0].text
+            content = tool_text(result)
             log(f"  Result: {content}")
             assert "sent" in content.lower()
             passed += 1
@@ -163,7 +169,7 @@ async def run_tests() -> None:
         log("\n--- Test 7: read_email (by subject_search) ---")
         try:
             result = await session.call_tool("read_email", {"subject_search": "Feedback", "folder": "inbox"})
-            content = result.content[0].text
+            content = tool_text(result)
             email_data = json.loads(content)
             if "error" in email_data:
                 log(f"  No match (expected if no 'Feedback' emails): {email_data['error']}")
@@ -179,6 +185,10 @@ async def run_tests() -> None:
     log(f"Results: {passed}/{total} passed")
     log("=" * 60)
     return passed == total
+
+
+def log(msg: str) -> None:
+    print(msg, file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":

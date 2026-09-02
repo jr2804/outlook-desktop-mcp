@@ -9,19 +9,26 @@ import json
 import logging
 import os
 import sys
+from datetime import datetime, timedelta
 
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.types import CallToolResult, TextContent
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
 
 
-def log(msg: str) -> None:
-    print(msg, file=sys.stderr, flush=True)
+def tool_text(result: CallToolResult) -> str:
+    """Return the text of the first content block (tools return JSON text)."""
+    block = result.content[0]
+    if not isinstance(block, TextContent):
+        raise TypeError(f"Expected TextContent, got {type(block).__name__}")
+    return block.text
 
 
-async def run_tests() -> None:
+
+async def run_tests() -> bool:
     python_exe = r"C:\Development_Local\outlook-desktop-mcp\.venv\Scripts\python.exe"
     server_params = StdioServerParameters(
         command=python_exe,
@@ -71,7 +78,7 @@ async def run_tests() -> None:
         log("\n--- Test 2: list_events (next 7 days) ---")
         try:
             result = await session.call_tool("list_events", {"count": 5})
-            content = result.content[0].text
+            content = tool_text(result)
             events = json.loads(content)
             log(f"  Got {len(events)} events:")
             for e in events:
@@ -86,8 +93,6 @@ async def run_tests() -> None:
         total += 1
         log("\n--- Test 3: create_event ---")
         try:
-            from datetime import datetime, timedelta  # noqa: PLC0415
-
             start = datetime.now() + timedelta(days=3, hours=2)
             end = start + timedelta(hours=1)
             result = await session.call_tool(
@@ -101,7 +106,7 @@ async def run_tests() -> None:
                     "reminder_minutes": 0,
                 },
             )
-            content = result.content[0].text
+            content = tool_text(result)
             data = json.loads(content)
             created_entry_id = data.get("entry_id")
             log(f"  Created: {data['subject']}")
@@ -123,7 +128,7 @@ async def run_tests() -> None:
                     "entry_id": created_entry_id,
                 },
             )
-            content = result.content[0].text
+            content = tool_text(result)
             data = json.loads(content)
             log(f"  Subject: {data['subject']}")
             log(f"  Location: {data['location']}")
@@ -151,7 +156,7 @@ async def run_tests() -> None:
                     "body": "Meeting created through MCP calendar tools.",
                 },
             )
-            content = result.content[0].text
+            content = tool_text(result)
             log(f"  Result: {content}")
             assert "sent" in content.lower() or "created" in content.lower()
             passed += 1
@@ -172,7 +177,7 @@ async def run_tests() -> None:
                     "location": "Updated Room via MCP",
                 },
             )
-            content = result.content[0].text
+            content = tool_text(result)
             data = json.loads(content)
             log(f"  Updated: {data['subject']}")
             log(f"  Location: {data['location']}")
@@ -193,7 +198,7 @@ async def run_tests() -> None:
                     "count": 5,
                 },
             )
-            content = result.content[0].text
+            content = tool_text(result)
             results = json.loads(content)
             log(f"  Found {len(results)} events matching 'MCP Calendar'")
             for r in results:
@@ -214,7 +219,7 @@ async def run_tests() -> None:
                     "entry_id": created_entry_id,
                 },
             )
-            content = result.content[0].text
+            content = tool_text(result)
             log(f"  Result: {content}")
             assert "deleted" in content.lower()
             passed += 1
@@ -227,6 +232,10 @@ async def run_tests() -> None:
     log(f"Results: {passed}/{total} passed")
     log("=" * 60)
     return passed == total
+
+
+def log(msg: str) -> None:
+    print(msg, file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":

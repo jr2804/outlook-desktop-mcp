@@ -17,8 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from collections.abc import Awaitable, Callable
-from typing import TypeVar
+from collections.abc import Awaitable, Callable, Sequence
 
 from fastmcp import FastMCP
 from fastmcp.tools.base import Tool
@@ -36,6 +35,7 @@ logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     stream=sys.stderr,
 )
+
 logger = logging.getLogger("outlook_desktop_mcp")
 
 # --- MCP Server ---
@@ -91,53 +91,6 @@ def set_backend(b: Backend, platform: Platform) -> None:
     if b.supports_oof_status_query:
         mcp.tool()(get_out_of_office)
     logger.info("Backend set: %s (platform=%s)", b.name, platform)
-
-
-def _require_backend() -> Backend:
-    if backend is None:
-        raise BackendError("No backend configured (call set_backend first)")
-    return backend
-
-
-# --- Response helpers ---
-
-
-def _dump(result: BaseModel | list[BaseModel]) -> str:
-    """Serialize a model or model list to the tool JSON contract."""
-    if isinstance(result, BaseModel):
-        return result.model_dump_json(indent=2)
-    return json.dumps([r.model_dump() for r in result], indent=2)
-
-
-M = TypeVar("M", bound=BaseModel)
-
-
-async def _run[M: BaseModel](action: str, call: Callable[[], Awaitable[M | list[BaseModel]]]) -> str:
-    """Execute a backend call, converting failures into Error JSON."""
-    try:
-        return _dump(await call())
-    except BackendError as e:
-        return Error(error=str(e)).model_dump_json(indent=2)
-    except Exception as e:  # noqa: BLE001 - tool boundary
-        return Error(error=_require_backend().format_unexpected_error(action, e)).model_dump_json(indent=2)
-
-
-def _validate_subject(subject: str | None, *, allow_skip: bool = False) -> str | None:
-    """Return an Error JSON string if subject is blank, else None.
-
-    Args:
-        subject: The subject value to check.
-        allow_skip: If True, an empty string means "do not change" (for update_*
-            tools) and is accepted; whitespace-only is still rejected.
-    """
-    if subject is None:
-        return Error(error="subject is required and must not be blank").model_dump_json(indent=2)
-    if not subject and allow_skip:
-        return None
-    if not subject or not subject.strip():
-        msg = "subject is required and must not be blank" if not allow_skip else "subject, if provided, must not be blank"
-        return Error(error=msg).model_dump_json(indent=2)
-    return None
 
 
 # =====================================================================
@@ -368,40 +321,6 @@ async def move_email(
 
 
 @mcp.tool()
-async def reply_email(
-    entry_id: str,
-    body: str,
-    reply_all: bool = False,
-    html_body: str = "",
-    account: str = "",
-) -> str:
-    """Reply to an email in Outlook.
-
-    Creates and sends a reply, preserving the original message thread.
-    Use reply_all=True to reply to all recipients (sender + CC list).
-
-    Args:
-        entry_id: The Outlook EntryID of the email to reply to.
-        body: The plain-text reply message text. Prepended above the original
-            message in the email thread. If html_body is also provided, both
-            are set and Outlook will prefer the HTML version.
-        reply_all: If true, reply to all recipients (sender + all CC/To).
-            If false (default), reply only to the sender.
-        html_body: Optional. HTML-formatted reply body. When provided, Outlook
-            renders the reply as HTML. The plain-text body serves as fallback.
-        account: Optional (Windows only). Account display name (or substring).
-            Only needed if entry_id is ambiguous across stores.
-
-    Returns:
-        JSON object confirming the reply was sent, or an error.
-    """
-    return await _run(
-        "Error replying to email",
-        lambda: _require_backend().reply_email(entry_id, body, reply_all, html_body, account, send=True),
-    )
-
-
-@mcp.tool()
 async def draft_reply_email(
     entry_id: str,
     body: str,
@@ -433,6 +352,40 @@ async def draft_reply_email(
     return await _run(
         "Error creating reply draft",
         lambda: _require_backend().reply_email(entry_id, body, reply_all, html_body, account, send=False),
+    )
+
+
+@mcp.tool()
+async def reply_email(
+    entry_id: str,
+    body: str,
+    reply_all: bool = False,
+    html_body: str = "",
+    account: str = "",
+) -> str:
+    """Reply to an email in Outlook.
+
+    Creates and sends a reply, preserving the original message thread.
+    Use reply_all=True to reply to all recipients (sender + CC list).
+
+    Args:
+        entry_id: The Outlook EntryID of the email to reply to.
+        body: The plain-text reply message text. Prepended above the original
+            message in the email thread. If html_body is also provided, both
+            are set and Outlook will prefer the HTML version.
+        reply_all: If true, reply to all recipients (sender + all CC/To).
+            If false (default), reply only to the sender.
+        html_body: Optional. HTML-formatted reply body. When provided, Outlook
+            renders the reply as HTML. The plain-text body serves as fallback.
+        account: Optional (Windows only). Account display name (or substring).
+            Only needed if entry_id is ambiguous across stores.
+
+    Returns:
+        JSON object confirming the reply was sent, or an error.
+    """
+    return await _run(
+        "Error replying to email",
+        lambda: _require_backend().reply_email(entry_id, body, reply_all, html_body, account, send=True),
     )
 
 
@@ -853,6 +806,24 @@ async def create_task(
     )
 
 
+def _validate_subject(subject: str | None, *, allow_skip: bool = False) -> str | None:
+    """Return an Error JSON string if subject is blank, else None.
+
+    Args:
+        subject: The subject value to check.
+        allow_skip: If True, an empty string means "do not change" (for update_*
+            tools) and is accepted; whitespace-only is still rejected.
+    """
+    if subject is None:
+        return Error(error="subject is required and must not be blank").model_dump_json(indent=2)
+    if not subject and allow_skip:
+        return None
+    if not subject or not subject.strip():
+        msg = "subject is required and must not be blank" if not allow_skip else "subject, if provided, must not be blank"
+        return Error(error=msg).model_dump_json(indent=2)
+    return None
+
+
 @mcp.tool()
 async def complete_task(entry_id: str, account: str = "") -> str:
     """Mark a task as complete.
@@ -1132,6 +1103,32 @@ async def get_out_of_office(account: str = "") -> str:
         "Error checking OOF status",
         lambda: _require_backend().get_out_of_office(account),
     )
+
+
+async def _run(action: str, call: Callable[[], Awaitable[BaseModel | Sequence[BaseModel]]]) -> str:
+    """Execute a backend call, converting failures into Error JSON."""
+    try:
+        return _dump(await call())
+    except BackendError as e:
+        return Error(error=str(e)).model_dump_json(indent=2)
+    except Exception as e:  # noqa: BLE001 - tool boundary
+        return Error(error=_require_backend().format_unexpected_error(action, e)).model_dump_json(indent=2)
+
+
+def _require_backend() -> Backend:
+    if backend is None:
+        raise BackendError("No backend configured (call set_backend first)")
+    return backend
+
+
+# --- Response helpers ---
+
+
+def _dump(result: BaseModel | Sequence[BaseModel]) -> str:
+    """Serialize a model or model list to the tool JSON contract."""
+    if isinstance(result, BaseModel):
+        return result.model_dump_json(indent=2)
+    return json.dumps([r.model_dump() for r in result], indent=2)
 
 
 # =====================================================================
