@@ -14,11 +14,13 @@ from outlook_desktop_mcp.backends.win.formatting import (
 )
 from outlook_desktop_mcp.backends.win.helpers import (
     _OL_CLASS_APPOINTMENT,
-    _jet_datetime,
+    _item_start_utc,
     _parse_date,
+    _parse_date_window,
     _require_class,
     _require_store,
     _resolve_folder,
+    _within_window,
 )
 from outlook_desktop_mcp.models import (
     EventCreatedResult,
@@ -60,22 +62,36 @@ async def list_events(
         items.Sort("[Start]")
         items.IncludeRecurrences = True
 
-        start = _parse_date(start_date) if start_date else datetime.now()
-        end = _parse_date(end_date) if end_date else start + timedelta(days=7)
+        # Default window: now → +7 days, matching the documented tool contract.
+        start_dt = _parse_date(start_date) if start_date else datetime.now()
+        end_dt = _parse_date(end_date) if end_date else start_dt + timedelta(days=7)
+        window = _parse_date_window(start_dt.isoformat(), end_dt.isoformat())
 
-        restrict = f"[Start] >= '{_jet_datetime(start)}' AND [Start] <= '{_jet_datetime(end)}'"
-        filtered = items.Restrict(restrict)
-
+        # Outlook's date Restrict is unreliable here (silently returns the whole
+        # calendar / drops sibling filters), so restrict only by proven filters
+        # and post-filter by Start in Python.
         results = []
-        n = 0
-        for item in filtered:
-            n += 1
+        total = items.Count
+        # Walk oldest→newest until we've collected the target count, the
+        # calendar is exhausted, or we rise above the window's upper bound.
+        for i in range(1, total + 1):
+            if len(results) >= effective_count:
+                break
+            try:
+                item = items.Item(i)
+            except Exception:  # noqa: S112 - item vanished mid-iteration
+                continue
+            dt = _item_start_utc(item)
+            if dt is None:
+                continue
+            if not _within_window(dt, window):
+                if window.hi is not None and dt > window.hi:
+                    break  # sorted ascending; rest are newer and past window
+                continue  # before lower bound — keep walking
             try:
                 results.append(EventSummary.model_validate(format_event_summary(item)))
             except Exception:  # noqa: S112
                 continue
-            if n >= effective_count:
-                break
         return results
 
     return await bridge.call(_list)
@@ -287,23 +303,35 @@ async def search_events(
         items = calendar.Items
         items.Sort("[Start]")
         items.IncludeRecurrences = True
-
-        start = _parse_date(start_date) if start_date else datetime.now() - timedelta(days=30)
-        end = _parse_date(end_date) if end_date else datetime.now() + timedelta(days=30)
-
-        restrict = f"[Start] >= '{_jet_datetime(start)}' AND [Start] <= '{_jet_datetime(end)}'"
-        filtered = items.Restrict(restrict)
-
+        # Default window: now ±30 days, matching the documented contract.
+        start_dt = _parse_date(start_date) if start_date else datetime.now() - timedelta(days=30)
+        end_dt = _parse_date(end_date) if end_date else datetime.now() + timedelta(days=30)
+        window = _parse_date_window(start_dt.isoformat(), end_dt.isoformat())
         query_lower = query.lower()
         results = []
-        for item in filtered:
-            if query_lower in (item.Subject or "").lower():
-                try:
-                    results.append(EventSummary.model_validate(format_event_summary(item)))
-                except Exception:  # noqa: S112
-                    continue
-                if len(results) >= effective_count:
-                    break
+        total = items.Count
+        # Outlook's date Restrict silently drops the filter here, so walk the
+        # sorted calendar and match subject + date window in Python.
+        for i in range(1, total + 1):
+            try:
+                item = items.Item(i)
+            except Exception:  # noqa: S112 - item vanished mid-iteration
+                continue
+            if query_lower not in (item.Subject or "").lower():
+                continue
+            dt = _item_start_utc(item)
+            if dt is None:
+                continue
+            if not _within_window(dt, window):
+                if window.hi is not None and dt > window.hi:
+                    break  # sorted ascending; rest are past window
+                continue
+            try:
+                results.append(EventSummary.model_validate(format_event_summary(item)))
+            except Exception:  # noqa: S112
+                continue
+            if len(results) >= effective_count:
+                break
         return results
 
     return await bridge.call(_search)

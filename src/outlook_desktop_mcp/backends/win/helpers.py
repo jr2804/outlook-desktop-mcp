@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import ctypes
 import dataclasses
-import sys
 from datetime import UTC, datetime
-from functools import lru_cache
 from typing import Any
 
 from outlook_desktop_mcp.backends.base import BackendError
@@ -46,47 +43,6 @@ def _parse_date(date_str: str) -> datetime:
     return datetime.fromisoformat(date_str)
 
 
-def _jet_datetime(dt: datetime, *, order: int | None = None) -> str:
-    """Format *dt* for a Jet restriction honoring the system short-date order."""
-    effective = _locale_date_order() if order is None else order
-    fmt = {0: "%m/%d/%Y", 1: "%d/%m/%Y", 2: "%Y/%m/%d"}[effective]
-    return dt.strftime(f"{fmt} %H:%M")
-
-
-@lru_cache(maxsize=1)
-def _locale_date_order() -> int:
-    """Return the user's short-date order: 0=MDY, 1=DMY, 2=YMD.
-
-    Outlook's Jet parser reads slash dates in the *locale's* order, so a fixed
-    ``%m/%d/%Y`` silently swaps month and day on day-first locales such as
-    German whenever the day component is <= 12.
-    """
-    if sys.platform != "win32":
-        return 0
-    try:
-        LOCALE_IDATE = 0x00000004
-        LOCALE_RETURN_NUMBER = 0x20000000
-        value = ctypes.c_uint32(0)
-        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined,no-any-expr]
-        written = kernel32.GetLocaleInfoExW(
-            None,  # LOCALE_NAME_USER_DEFAULT
-            LOCALE_IDATE | LOCALE_RETURN_NUMBER,
-            ctypes.byref(value),
-            ctypes.sizeof(value),
-        )
-        if written and value.value <= 2:
-            return int(value.value)
-    except Exception:  # noqa: S110 - defensive, Windows only
-        pass
-    return 0
-
-
-def _dasl_utc(dt: datetime) -> str:
-    """Format *dt* as a UTC ISO literal, as required by DASL date comparisons."""
-    local = dt.astimezone() if dt.tzinfo is None else dt
-    return local.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def _parse_date_window(start_date: str, end_date: str) -> _DateWindow:
     """Build a timezone-aware window from ISO date(-time) strings.
 
@@ -112,11 +68,23 @@ def _parse_date_window(start_date: str, end_date: str) -> _DateWindow:
 
 
 def _item_received_utc(item: Any) -> datetime | None:
-    """Return an item's ReceivedTime as an aware UTC datetime, or None."""
+    """Return an email's ReceivedTime as an aware UTC datetime, or None."""
     try:
-        raw = item.ReceivedTime
+        return _com_datetime_utc(item.ReceivedTime)
     except Exception:  # noqa: S112 - missing attribute / COM transient
         return None
+
+
+def _item_start_utc(item: Any) -> datetime | None:
+    """Return an appointment's Start as an aware UTC datetime, or None."""
+    try:
+        return _com_datetime_utc(item.Start)
+    except Exception:  # noqa: S112 - missing attribute / COM transient
+        return None
+
+
+def _com_datetime_utc(raw: Any) -> datetime | None:
+    """Normalize a COM date value (native datetime or ISO string) to aware UTC."""
     if raw is None:
         return None
     if isinstance(raw, str):

@@ -21,15 +21,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
 
 
-def tool_text(result: CallToolResult) -> str:
-    """Return the text of the first content block (tools return JSON text)."""
-    block = result.content[0]
-    if not isinstance(block, TextContent):
-        raise TypeError(f"Expected TextContent, got {type(block).__name__}")
-    return block.text
-
-
-
 async def run_tests() -> bool:
     python_exe = r"C:\Development_Local\outlook-desktop-mcp\.venv\Scripts\python.exe"
 
@@ -185,6 +176,14 @@ async def run_tests() -> bool:
     log(f"Results: {passed}/{total} passed")
     log("=" * 60)
     return passed == total
+
+
+def tool_text(result: CallToolResult) -> str:
+    """Return the text of the first content block (tools return JSON text)."""
+    block = result.content[0]
+    if not isinstance(block, TextContent):
+        raise TypeError(f"Expected TextContent, got {type(block).__name__}")
+    return block.text
 
 
 def log(msg: str) -> None:
