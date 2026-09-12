@@ -91,3 +91,37 @@ def test_item_start_utc_normalizes_to_aware_utc() -> None:
     # None and invalid values return None.
     assert _item_start_utc(_Fake(None)) is None
     assert _item_start_utc(_Fake("not-a-date")) is None
+
+
+def test_date_only_end_covers_whole_local_day() -> None:
+    """A date-only end_date must include all-day items stamped 00:00 UTC that day.
+
+    Regression: interpreting a date-only end as local midnight put the upper
+    bound at 22:00 UTC of the previous day (UTC+2), so every all-day calendar
+    item on the requested end date — notably month-end vacation entries — was
+    filtered out, making them invisible to the sync's duplicate detection.
+    """
+    w = _parse_date_window("2026-07-01", "2026-07-31")
+    assert w.hi is not None
+    # All-day event on the end date, stored at 00:00 UTC.
+    assert _within_window(datetime(2026, 7, 31, 0, 0, tzinfo=UTC), w)
+    # Still rejects the following day.
+    assert not _within_window(datetime(2026, 8, 1, 0, 0, tzinfo=UTC), w)
+
+
+def test_date_only_window_includes_month_end_events() -> None:
+    """Month-end (and every) all-day entry on the end date is inside the window."""
+    for end_day in (30, 31):
+        month = 7 if end_day == 31 else 6
+        w = _parse_date_window(f"2026-{month:02d}-01", f"2026-{month:02d}-{end_day:02d}")
+        assert _within_window(datetime(2026, month, end_day, 0, 0, tzinfo=UTC), w), (
+            f"all-day item on 2026-{month:02d}-{end_day:02d} must be in window"
+        )
+
+
+def test_datetime_end_still_respected_when_time_given() -> None:
+    """An explicit time in end_date is honored (no day-extension applied)."""
+    w = _parse_date_window("2026-07-01 00:00", "2026-07-31 12:00")
+    assert w.hi is not None
+    hi_local = w.hi.astimezone(datetime.now().astimezone().tzinfo)
+    assert (hi_local.hour, hi_local.minute) == (12, 0)

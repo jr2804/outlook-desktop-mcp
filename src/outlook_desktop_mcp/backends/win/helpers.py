@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from outlook_desktop_mcp.backends.base import BackendError
@@ -49,18 +49,27 @@ def _parse_date_window(start_date: str, end_date: str) -> _DateWindow:
     Input dates are assumed to be local time (naive) and are converted to UTC.
     `start_date` maps to the window's lower bound (inclusive), `end_date` to the
     upper bound (inclusive).
+
+    Date-only inputs denote whole calendar days: a date-only `end_date` extends
+    to the end of that local day (23:59:59.999999). Interpreting it as local
+    midnight instead would land the upper bound on 22:00 UTC of the *previous*
+    day (for UTC+2), silently excluding every all-day item stored at 00:00 UTC
+    on the requested end date — e.g. month-end calendar entries.
     """
     local = datetime.now().astimezone()
 
-    def _to_utc(value: str) -> datetime:
+    def _to_utc(value: str, *, is_end: bool = False) -> datetime:
         dt = datetime.fromisoformat(value)
-        # Naive input -> interpret as local time, then convert to UTC.
         if dt.tzinfo is None:
+            # Naive input -> interpret as local time, then convert to UTC.
             dt = dt.replace(tzinfo=local.tzinfo)
+        if is_end and len(value.strip()) <= 10:
+            # Date-only end: cover the whole local day.
+            dt = dt + timedelta(days=1) - timedelta(microseconds=1)
         return dt.astimezone(UTC)
 
     lo = _to_utc(start_date) if start_date else None
-    hi = _to_utc(end_date) if end_date else None
+    hi = _to_utc(end_date, is_end=True) if end_date else None
     if not end_date and start_date:
         # A start date without an end date means "through now".
         hi = datetime.now(UTC)
