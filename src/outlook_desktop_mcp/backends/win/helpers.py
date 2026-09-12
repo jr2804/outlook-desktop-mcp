@@ -50,11 +50,12 @@ def _parse_date_window(start_date: str, end_date: str) -> _DateWindow:
     `start_date` maps to the window's lower bound (inclusive), `end_date` to the
     upper bound (inclusive).
 
-    Date-only inputs denote whole calendar days: a date-only `end_date` extends
-    to the end of that local day (23:59:59.999999). Interpreting it as local
-    midnight instead would land the upper bound on 22:00 UTC of the *previous*
-    day (for UTC+2), silently excluding every all-day item stored at 00:00 UTC
-    on the requested end date — e.g. month-end calendar entries.
+    A midnight end bound denotes the whole calendar day: it is extended to
+    23:59:59.999999 local. Interpreting it as local midnight instead would land
+    the upper bound on 22:00 UTC of the *previous* day (for UTC+2), silently
+    excluding every all-day item stored at 00:00 UTC on the requested end date
+    — e.g. month-end calendar entries. Bounds carrying an explicit non-midnight
+    time are used as-is.
     """
     local = datetime.now().astimezone()
 
@@ -63,8 +64,20 @@ def _parse_date_window(start_date: str, end_date: str) -> _DateWindow:
         if dt.tzinfo is None:
             # Naive input -> interpret as local time, then convert to UTC.
             dt = dt.replace(tzinfo=local.tzinfo)
-        if is_end and len(value.strip()) <= 10:
-            # Date-only end: cover the whole local day.
+        if (
+            is_end
+            and dt.hour == 0
+            and dt.minute == 0
+            and dt.second == 0
+            and dt.microsecond == 0
+        ):
+            # Midnight end bound: cover the whole end day. A midnight upper
+            # bound would otherwise exclude every all-day item stored at
+            # 00:00 UTC ON the end date (00:00Z < 22:00Z prev-day local) —
+            # callers pass date-only bounds to mean "including that day",
+            # and calendar.py round-trips date strings through
+            # datetime.isoformat(), so the time component is midnight even
+            # for date-only inputs.
             dt = dt + timedelta(days=1) - timedelta(microseconds=1)
         return dt.astimezone(UTC)
 
