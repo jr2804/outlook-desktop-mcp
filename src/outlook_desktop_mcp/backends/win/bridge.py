@@ -108,8 +108,15 @@ class OutlookBridge(BridgeBase):
             try:
                 self._connect()
                 store_name = self._namespace.DefaultStore.DisplayName
-                user_name = self._namespace.CurrentUser.Name
-                logger.debug("COM thread ready. Store: %s, User: %s", store_name, user_name)
+                # NOTE: do NOT read ``namespace.CurrentUser.Name`` here.
+                # It is an address-information access, which trips Outlook's
+                # Object Model Guard ("a program is trying to access email
+                # address information") whenever no admin policy suppresses the
+                # prompt. The prompt is MODAL, so the call blocks indefinitely
+                # and the server dies on COM_INIT_TIMEOUT — a debug log line
+                # must never decide whether the server starts.
+                # ``DefaultStore.DisplayName`` already identifies the mailbox.
+                logger.debug("COM thread ready. Store: %s", store_name)
             except Exception as e:
                 self._init_error = e
                 self._ready.set()  # Unblock the caller so they see the error

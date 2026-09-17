@@ -1,6 +1,8 @@
 """Helpers for extracting and formatting Outlook item data."""
 
+import os
 import re
+from collections.abc import Callable
 from typing import Any
 
 from outlook_desktop_mcp.tools._folder_constants import (
@@ -55,6 +57,39 @@ def format_event_full(item: Any, body_max_length: int = 5000) -> dict:
 # --- Calendar formatting ---
 
 
+def _address_info_enabled() -> bool:
+    """Whether it is safe to read Object-Model-Guard protected properties.
+
+    ``Organizer``/``RequiredAttendees``/``OptionalAttendees`` are *address
+    information*: reading them pops a modal "A program is trying to access email
+    address information" prompt unless an admin policy auto-approves it. With
+    nobody at the desk (cron, headless sync) that prompt blocks the COM thread
+    forever — the call never returns and never raises, so ``try/except`` alone
+    cannot save it.
+
+    Set ``OUTLOOK_MCP_ADDRESS_FIELDS=1`` to opt back in once the machine has the
+    Object Model Guard suppression policy applied. Default: skip these fields.
+    """
+    return os.environ.get("OUTLOOK_MCP_ADDRESS_FIELDS", "").strip().lower() in {"1", "true", "yes"}
+
+
+def _guarded(getter: Callable[[], Any], default: Any) -> Any:
+    """Read a COM property that may be blocked by Outlook's Object Model Guard.
+
+    A *denied* read raises ``com_error(-2147467259, 'Unspecified error')``; an
+    *unanswered* read hangs. These fields are informational only, so never let
+    one of them abort or stall the whole item — that failure mode silently
+    emptied ``list_events`` and made the absence sync re-create every vacation
+    day as a duplicate.
+    """
+    if not _address_info_enabled():
+        return default
+    try:
+        return getter()
+    except Exception:  # noqa: BLE001 - guard-blocked field, fall back to default
+        return default
+
+
 def format_event_summary(item: Any) -> dict:
     """Extract key fields from an Outlook AppointmentItem."""
     return {
@@ -64,13 +99,13 @@ def format_event_summary(item: Any) -> dict:
         "end": str(item.End),
         "duration": item.Duration,
         "location": item.Location or "",
-        "organizer": item.Organizer or "",
+        "organizer": _guarded(lambda: item.Organizer or "", ""),
         "is_recurring": bool(item.IsRecurring),
         "all_day": bool(item.AllDayEvent),
         "busy_status": BUSY_STATUS_NAMES.get(item.BusyStatus, "unknown"),
         "meeting_status": MEETING_STATUS_NAMES.get(item.MeetingStatus, "unknown"),
-        "required_attendees": item.RequiredAttendees or "",
-        "optional_attendees": item.OptionalAttendees or "",
+        "required_attendees": _guarded(lambda: item.RequiredAttendees or "", ""),
+        "optional_attendees": _guarded(lambda: item.OptionalAttendees or "", ""),
     }
 
 
